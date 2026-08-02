@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Import in Progress</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; }
+        .container { max-width: 600px; margin: 0 auto; text-align: center; }
+        .progress-bar { width: 100%; height: 24px; background: #e9ecef; border-radius: 12px; overflow: hidden; margin: 24px 0; }
+        .progress-fill { height: 100%; background: #007bff; width: 0%; transition: width 0.3s; border-radius: 12px; }
+        .progress-fill.scanning { background: linear-gradient(90deg, #007bff, #66b0ff, #007bff); background-size: 200% 100%; animation: slide 1.5s linear infinite; }
+        @keyframes slide { 0% { background-position: 0% 0; } 100% { background-position: 200% 0; } }
+        .status { margin: 16px 0; color: #666; }
+        .movie-name { font-size: 18px; margin: 8px 0; }
+        .counter { font-size: 14px; color: #999; }
+        .elapsed { font-size: 14px; color: #999; margin-top: 8px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Importing ratings...</h1>
+
+    <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+    </div>
+
+    <div class="status" id="status-text">Starting...</div>
+    <div class="movie-name" id="movie-name"></div>
+    <div class="counter" id="counter"></div>
+    <div class="elapsed" id="elapsed"></div>
+
+    <button onclick="stopImport()" style="margin-top: 24px; padding: 10px 24px; font-size: 16px; cursor: pointer; background: #dc3545; color: white; border: none; border-radius: 6px;">Stop</button>
+</div>
+
+<script>
+    var startTime = Date.now();
+    var source = new EventSource('/notes/progress');
+
+    source.onmessage = function(event) {
+        var data = JSON.parse(event.data);
+
+        if (data.finished) {
+            source.close();
+            if (data.result && data.result.errorMessage) {
+                window.location.href = '/notes/error?message=' + encodeURIComponent(data.result.errorMessage);
+            } else {
+                window.location.href = '/notes/result';
+            }
+            return;
+        }
+
+        var pct;
+        var statusText;
+        var fill = document.getElementById('progress-fill');
+        if (data.phase === 'kp') {
+            pct = 0;
+            statusText = 'Parsing Kinopoisk ratings...';
+            document.getElementById('movie-name').textContent = data.movieName || '';
+            document.getElementById('counter').textContent = 'Scanning...';
+            fill.classList.add('scanning');
+        } else {
+            pct = data.total > 0 ? Math.round(data.current / data.total * 100) : 0;
+            statusText = getStatusText(data.status);
+            document.getElementById('movie-name').textContent = data.movieName || '';
+            document.getElementById('counter').textContent = data.current + ' / ' + data.total;
+            fill.classList.remove('scanning');
+        }
+        fill.style.width = pct + '%';
+        document.getElementById('status-text').textContent = statusText;
+
+        var elapsed = Math.floor((Date.now() - startTime) / 1000);
+        var mins = Math.floor(elapsed / 60);
+        var secs = elapsed % 60;
+        document.getElementById('elapsed').textContent = 'Elapsed: ' + mins + 'm ' + secs + 's';
+    };
+
+    source.onerror = function() {
+        source.close();
+        document.getElementById('status-text').textContent = 'Connection lost. Redirecting...';
+        setTimeout(function() { window.location.href = '/notes/result'; }, 2000);
+    };
+
+    function stopImport() {
+        fetch('/notes/stop', { method: 'POST' });
+        document.getElementById('status-text').textContent = 'Stopping...';
+        document.querySelector('button').disabled = true;
+    }
+
+    function getStatusText(s) {
+        var map = {
+            'RATED': 'Rated',
+            'NOT_FOUND': 'Not found on IMDB',
+            'SKIPPED_SAME': 'Skipped (same rating)',
+            'SKIPPED_DIFFERENT': 'Skipped (different rating)',
+            'ERROR': 'Error',
+            'complete': 'Completed'
+        };
+        return map[s] || s;
+    }
+</script>
+</body>
+</html>

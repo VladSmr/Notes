@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>KP to IMDB Import</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; }
+        .container { max-width: 500px; margin: 0 auto; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; }
+        input[type="number"], input[type="text"] { width: 100%; padding: 8px; margin-bottom: 16px; font-size: 16px; box-sizing: border-box; }
+        .method-row { margin-bottom: 16px; }
+        .method-row .radio { display: inline-block; font-weight: normal; margin-right: 20px; }
+        button { padding: 10px 24px; font-size: 16px; cursor: pointer; }
+        .hint { color: #666; font-size: 14px; margin-bottom: 16px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Import ratings from KinoPoisk to IMDB</h1>
+    <form action="/notes/submit" method="post">
+        <label for="kpUserId">KinoPoisk User ID:</label>
+        <input type="number" id="kpUserId" name="kpUserId" required placeholder="e.g. 12345678">
+        <div class="hint">Found in your KP profile URL: https://www.kinopoisk.ru/user/<strong>USER_ID</strong>/</div>
+
+        <label for="logDirectory">Log directory:</label>
+        <input type="text" id="logDirectory" name="logDirectory" required value="D:\">
+        <div class="hint">Directory where the <code>kp-ratings.csv</code> dump will be saved.</div>
+
+        <label>Parsing method:</label>
+        <div class="method-row">
+            <label class="radio"><input type="radio" name="parserType" value="selenium" checked onclick="toggleToken(this.value)"> Browser (Selenium)</label>
+            <label class="radio"><input type="radio" name="parserType" value="api" onclick="toggleToken(this.value)"> API (token)</label>
+        </div>
+        <div class="hint">Browser needs KP login and also fills in missing original titles. API uses kinopoiskapiunofficial.tech and needs a token.</div>
+
+        <label class="radio" style="display:block; margin-bottom:16px;">
+            <input type="checkbox" name="useSavedDump" checked> Use saved <code>kp-ratings.csv</code> if present (skip KP parsing)
+        </label>
+        <div class="hint">If the dump already exists in the log directory, data is read from it instead of calling KP/API — useful to re-run the IMDB part after errors.</div>
+
+        <div id="apiTokenRow" style="display:none;">
+            <label for="apiToken">KinoPoisk API token (for API method):</label>
+            <input type="text" id="apiToken" name="apiToken" placeholder="e.g. xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+            <div class="hint">Get it on kinopoiskapiunofficial.tech (Settings → API key).</div>
+        </div>
+
+        <button type="submit">Next: Open IMDB Browser</button>
+    </form>
+</div>
+<script>
+    function toggleToken(value) {
+        var row = document.getElementById('apiTokenRow');
+        var input = document.getElementById('apiToken');
+        var show = value === 'api';
+        row.style.display = show ? 'block' : 'none';
+        input.required = show;
+    }
+</script>
+</body>
+</html>

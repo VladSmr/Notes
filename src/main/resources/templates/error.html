@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Error</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; }
+        .container { max-width: 500px; margin: 0 auto; text-align: center; }
+        .error-box { background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 8px; padding: 24px; margin: 16px 0; }
+        .error-message { color: #721c24; font-size: 18px; }
+        a { display: inline-block; margin-top: 16px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Error</h1>
+    <div class="error-box">
+        <p class="error-message" th:text="${errorMessage}">Something went wrong.</p>
+    </div>
+    <a href="/notes/main">Try again</a>
+</div>
+</body>
+</html>
