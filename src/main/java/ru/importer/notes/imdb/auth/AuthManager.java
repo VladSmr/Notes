@@ -1,8 +1,10 @@
 package ru.importer.notes.imdb.auth;
 
 import java.nio.file.Paths;
+import java.util.List;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.slf4j.Logger;
@@ -15,16 +17,6 @@ public class AuthManager {
     private static final Logger log = LoggerFactory.getLogger(AuthManager.class);
 
     private WebDriver driver;
-
-    /**
-     * Закрывает браузер и освобождает ресурсы.
-     */
-    public void close() {
-        if (driver != null) {
-            driver.quit();
-            driver = null;
-        }
-    }
 
     /**
      * Возвращает текущий экземпляр WebDriver.
@@ -42,7 +34,7 @@ public class AuthManager {
         }
         try {
             driver.get("https://www.imdb.com");
-            java.util.List<org.openqa.selenium.WebElement> userMenus = driver.findElements(
+            List<WebElement> userMenus = driver.findElements(
                     By.cssSelector(".imdb-header__account-toggle, #navUserMenu, [data-testid=\"nav-user-menu\"]")
             );
             return !userMenus.isEmpty();
@@ -62,6 +54,7 @@ public class AuthManager {
         options.addArguments("--start-maximized");
         options.addArguments("--remote-allow-origins=*");
         options.addArguments("--disable-blink-features=AutomationControlled");
+        options.addArguments("--blink-settings=imagesEnabled=false");
         options.setExperimentalOption("excludeSwitches", new String[]{"enable-automation"});
         options.setExperimentalOption("useAutomationExtension", false);
 

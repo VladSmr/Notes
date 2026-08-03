@@ -13,6 +13,7 @@ import ru.importer.notes.dto.MovieData.MovieStatus;
 import ru.importer.notes.dto.ValidateResult;
 import ru.importer.notes.imdb.ImdbNotesExporter;
 import ru.importer.notes.imdb.auth.AuthManager;
+import ru.importer.notes.kp.KpNotesImporter;
 import ru.importer.notes.kp.KpRatingsProvider;
 import ru.importer.notes.log.LogFileService;
 
@@ -25,26 +26,28 @@ public class Processor {
     private static final String ERROR_MESSAGE = "errorMessage";
     private static final String PARSER_SELENIUM = "selenium";
     private static final String PARSER_API = "api";
+    private static final String PARSER_HYBRID = "hybrid";
     private static final String PARSER_SAVED = "saved";
     private final AuthManager authManager;
     private final LogFileService logFile;
     private final ImdbNotesExporter notesExporter;
     private final List<KpRatingsProvider> kpProviders;
+    private final KpNotesImporter notesImporter;
     private final ImportProgress progress;
 
     public Processor(AuthManager authManager, ImdbNotesExporter notesExporter,
                      List<KpRatingsProvider> kpProviders, LogFileService logFile,
-                     ImportProgress progress) {
+                     KpNotesImporter notesImporter, ImportProgress progress) {
         this.authManager = authManager;
         this.notesExporter = notesExporter;
         this.kpProviders = kpProviders;
         this.logFile = logFile;
+        this.notesImporter = notesImporter;
         this.progress = progress;
     }
 
     private AppResult buildResult(List<MovieData> movies) {
         AppResult r = new AppResult();
-        r.setSuccess(true);
         r.setTotalMovies(movies.size());
         r.setMovies(movies);
         r.setRated((int) movies.stream().filter(m -> m.getStatus() == MovieStatus.RATED).count());
@@ -63,8 +66,8 @@ public class Processor {
     }
 
     /**
-     * Открывает браузер, переходит на страницу оценок КП (или IMDB при API-парсинге),
-     * затем показывает страницу для ручного входа на IMDB.
+     * Открывает браузер (при способах с парсингом КП — проверяет реальное число оценок
+     * на странице КП), затем показывает страницу для ручного входа на IMDB.
      *
      * @param inputData данные формы (KP userId + logDirectory + способ парсинга + токен)
      * @param model     модель для шаблона
@@ -72,30 +75,38 @@ public class Processor {
      * @return имя шаблона
      */
     public String openBrowser(InputData inputData, Model model) {
-        ValidateResult result = validateInputData(inputData);
-        if (result.isHasError()) {
-            model.addAttribute(ERROR_MESSAGE, result.getErrorMessage());
-            return ERROR;
-        }
-
         String parserType = normalizeParserType(inputData.getParserType());
         if (parserType == null) {
             model.addAttribute(ERROR_MESSAGE, "Invalid parser type");
             return ERROR;
         }
 
+        ValidateResult result = validateInputData(inputData, parserType);
+        if (result.isHasError()) {
+            model.addAttribute(ERROR_MESSAGE, result.getErrorMessage());
+            return ERROR;
+        }
+
         logFile.setLogDir(inputData.getLogDirectory());
 
-        KpRatingsProvider provider = resolveEffectiveProvider(parserType, inputData.getUseSavedDump());
+        KpRatingsProvider provider = resolveProviderChecked(parserType);
+        if (provider == null) {
+            model.addAttribute(ERROR_MESSAGE,
+                    "kp-ratings.csv not found in the log directory (для способа «Сохранённый дамп» нужен существующий дамп)");
+            return ERROR;
+        }
 
+        Integer realTotalRatings = null;
         if (authManager.getDriver() == null) {
             WebDriver driver = authManager.openBrowserAndWaitLogin();
 
-            if (PARSER_API.equals(parserType) || PARSER_SAVED.equals(provider.getKey())) {
+            if (PARSER_SELENIUM.equals(parserType)) {
+                realTotalRatings = provider.fetchTotalRatings(inputData.getKpUserId(), inputData.getApiToken());
+            } else if (PARSER_SAVED.equals(parserType)) {
                 driver.get("https://www.imdb.com");
             } else {
-                String kpUrl = "https://www.kinopoisk.ru/user/" + inputData.getKpUserId() + "/votes/";
-                driver.get(kpUrl);
+                realTotalRatings = notesImporter.fetchTotalRatings(driver, inputData.getKpUserId());
+                driver.get("https://www.imdb.com");
             }
         }
 
@@ -103,17 +114,20 @@ public class Processor {
         model.addAttribute("logDirectory", inputData.getLogDirectory());
         model.addAttribute("parserType", parserType);
         model.addAttribute("apiToken", inputData.getApiToken() != null ? inputData.getApiToken() : "");
-        model.addAttribute("useSavedDump", Boolean.TRUE.equals(inputData.getUseSavedDump()));
+        model.addAttribute("realTotalRatings", realTotalRatings);
 
         Integer totalRatings = null;
-        if (provider != null) {
+        if (PARSER_SELENIUM.equals(parserType)) {
+            totalRatings = realTotalRatings;
+        } else {
             totalRatings = provider.fetchTotalRatings(inputData.getKpUserId(), inputData.getApiToken());
         }
         model.addAttribute("totalRatings", totalRatings);
         return "login-sites";
     }
 
-    private void runImportAsync(long kpUserId, WebDriver driver, KpRatingsProvider provider, String apiToken) {
+    private void runImportAsync(long kpUserId, WebDriver driver, KpRatingsProvider provider, String apiToken,
+                                Long realTotalRatings) {
         List<MovieData> movies = null;
         try {
             log.info("=== Импорт начат ===");
@@ -122,6 +136,10 @@ public class Processor {
 
             movies = provider.fetchRatings(kpUserId, apiToken, progress);
             log.info("Загружено фильмов: {}", movies.size());
+
+            if (PARSER_API.equals(provider.getKey())) {
+                logApiVsReal(movies.size(), realTotalRatings);
+            }
 
             if (movies.isEmpty()) {
                 log.error("Импорт остановлен: оценок не найдено");
@@ -140,7 +158,8 @@ public class Processor {
             }
 
             if (!PARSER_SAVED.equals(provider.getKey())) {
-                saveKpDump(movies);
+                logKpWarnings(movies);
+                saveKpDumpSafely(movies);
                 log.info("Дамп сохранён: {} фильмов в kp-ratings.csv", movies.size());
             }
 
@@ -154,9 +173,10 @@ public class Processor {
             }
             log.info("Вход в IMDB подтверждён, начинаем импорт");
 
-            notesExporter.evaluate(movies, driver, progress);
+            List<MovieData> imported = movies;
+            notesExporter.evaluate(movies, driver, progress, () -> saveKpDumpSafely(imported));
 
-            saveKpDump(movies);
+            saveKpDumpSafely(movies);
             log.info("Итоговый дамп со статусами сохранён в kp-ratings.csv");
 
             AppResult appResult = buildResult(movies);
@@ -166,7 +186,7 @@ public class Processor {
             log.error("Импорт провалился: {}", e.getMessage(), e);
             try {
                 if (movies != null && !movies.isEmpty()) {
-                    saveKpDump(movies);
+                    saveKpDumpSafely(movies);
                 }
             } catch (Exception ignored) {
             }
@@ -177,65 +197,152 @@ public class Processor {
     }
 
     private void saveKpDump(List<MovieData> movies) {
-        String[] lines = movies.stream()
-                               .map(m -> {
-                                   String name = m.getName() != null ? escapeCsv(m.getName()) : "";
-                                   String nameOriginal = m.getNameOriginal() != null ? escapeCsv(m.getNameOriginal()) : "";
-                                   String nameEn = m.getNameEn() != null ? escapeCsv(m.getNameEn()) : "";
-                                   String year = m.getYear() > 0 ? String.valueOf(m.getYear()) : "";
-                                   String rating = m.getKpRating() > 0 ? String.valueOf(m.getKpRating()) : "";
-                                   String kpId = m.getKpId() != null ? String.valueOf(m.getKpId()) : "";
-                                   String imdbId = m.getImdbId() != null ? escapeCsv(m.getImdbId()) : "";
-                                   String status = m.getStatus() != null && m.getStatus() != MovieStatus.PENDING
-                                           ? m.getStatusLabel() : "";
-                                   String error = m.getErrorMessage() != null ? escapeCsv(m.getErrorMessage()) : "";
-
-                                   if (name == null || name.isBlank()) {
-                                       log.error("Ошибка парсинга КП: пустое название (kpId={})", m.getKpId());
-                                   } else if (year == null || year.isBlank()) {
-                                       log.error("Ошибка парсинга КП: у фильма '{}' (kpId={}) не спарсен год", name, m.getKpId());
-                                   }
-                                   if (nameOriginal == null || nameOriginal.isBlank()) {
-                                       if (nameEn == null || nameEn.isBlank()) {
-                                           log.warn("Внимание: у фильма '{}' ({} г., kpId={}) нет ни оригинального, ни английского названия — если страна не СНГ, это ошибка парсинга",
-                                                   name, year, m.getKpId());
-                                       } else {
-                                           log.warn("Внимание: у фильма '{}' ({} г., kpId={}) нет оригинального названия — если страна не СНГ, это ошибка парсинга",
-                                                   name, year, m.getKpId());
-                                       }
-                                   }
-
-                                   return String.join(";",
-                                                      name,
-                                                      nameOriginal,
-                                                      nameEn,
-                                                      year,
-                                                      rating,
-                                                      kpId,
-                                                      imdbId,
-                                                      status,
-                                                      error
-                                   );
-                               })
-                               .toArray(String[]::new);
-        logFile.saveKpDump(lines);
+        logFile.saveKpDump(buildKpDumpLines(movies));
     }
 
     /**
-     * Запускает импорт: загрузка данных из дампа (если включено и дамп есть), иначе парсинг КП
-     * выбранным способом, затем проставление оценок на IMDB. Выполняется в фоновом потоке,
+     * Сохраняет дамп, не роняя импорт. Если файл занят (например, открыт в Excel):
+     * попытка 1 — повтор через 5 с, попытка 2 — через 30 с, затем импорт встаёт на паузу,
+     * а на вебе появляется кнопка «Продолжить». После её нажатия — одна немедленная
+     * попытка; если файл всё ещё занят, снова пауза с сообщением, что файл ещё открыт.
+     */
+    private void saveKpDumpSafely(List<MovieData> movies) {
+        int attempt = 1;
+        boolean justResumed = false;
+        while (true) {
+            try {
+                saveKpDump(movies);
+                return;
+            } catch (Exception e) {
+                if (progress.isAborted()) {
+                    log.warn("Импорт остановлен, дамп не сохранён: {}", e.getMessage());
+                    return;
+                }
+                if (justResumed) {
+                    log.warn("Файл kp-ratings.csv всё ещё занят после «Продолжить»: {}", e.getMessage());
+                    progress.pause("paused-still-busy");
+                    progress.waitWhilePaused();
+                    if (progress.isAborted()) {
+                        return;
+                    }
+                    continue;
+                }
+                long delay = attempt == 1 ? 5000 : 30000;
+                log.warn("Не удалось сохранить kp-ratings.csv (попытка {}): {} — повтор через {} с",
+                        attempt, e.getMessage(), delay / 1000);
+                sleepUninterruptibly(delay);
+                if (++attempt > 2) {
+                    log.warn("kp-ratings.csv всё ещё занят. Импорт на паузе: закройте файл и нажмите «Продолжить».");
+                    progress.pause("paused");
+                    progress.waitWhilePaused();
+                    if (progress.isAborted()) {
+                        return;
+                    }
+                    justResumed = true;
+                }
+            }
+        }
+    }
+
+    private void sleepUninterruptibly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private String[] buildKpDumpLines(List<MovieData> movies) {
+        return movies.stream()
+                     .map(m -> {
+                         String name = m.getName() != null ? escapeCsv(m.getName()) : "";
+                         String nameOriginal = m.getNameOriginal() != null ? escapeCsv(m.getNameOriginal()) : "";
+                         String nameEn = m.getNameEn() != null ? escapeCsv(m.getNameEn()) : "";
+                         String year = m.getYear() > 0 ? String.valueOf(m.getYear()) : "";
+                         String rating = m.getKpRating() > 0 ? String.valueOf(m.getKpRating()) : "";
+                         String kpId = m.getKpId() != null ? String.valueOf(m.getKpId()) : "";
+                         String imdbId = m.getImdbId() != null ? escapeCsv(m.getImdbId()) : "";
+                         String status = m.getStatus() != null && m.getStatus() != MovieStatus.PENDING
+                                 ? m.getStatusLabel() : "";
+                         String error = m.getErrorMessage() != null ? escapeCsv(m.getErrorMessage()) : "";
+
+                         return String.join(";",
+                                            name,
+                                            nameOriginal,
+                                            nameEn,
+                                            year,
+                                            rating,
+                                            kpId,
+                                            imdbId,
+                                            status,
+                                            error
+                         );
+                     })
+                     .toArray(String[]::new);
+    }
+
+    /**
+     * Сравнивает число записей, вернувшихся из API, с реальным числом оценок на КП
+     * (из Selenium-проверки при открытии браузера) — лог и сообщение на страницу импорта.
+     */
+    private void logApiVsReal(int apiCount, Long realTotalRatings) {
+        if (realTotalRatings == null) {
+            log.info("API-парсинг: вернул {} записей", apiCount);
+            progress.advance(ImportProgress.PHASE_KP, "API вернул " + apiCount + " записей", "api");
+            return;
+        }
+        String msg;
+        if (apiCount < realTotalRatings) {
+            log.warn("API-парсинг: вернул только {} записей из {} на КП — не хватает {} (API отдаёт лишь последние ~1500 оценок)",
+                    apiCount, realTotalRatings, realTotalRatings - apiCount);
+            msg = "API вернул " + apiCount + " из " + realTotalRatings + " оценок (не хватает "
+                    + (realTotalRatings - apiCount) + ")";
+        } else {
+            log.info("API-парсинг: вернул {} записей из {} на КП", apiCount, realTotalRatings);
+            msg = "API вернул " + apiCount + " из " + realTotalRatings + " оценок";
+        }
+        progress.advance(ImportProgress.PHASE_KP, msg, "api");
+    }
+
+    /** Предупреждения о неполных данных КП-парсинга — логгируются один раз после загрузки списка. */
+    private void logKpWarnings(List<MovieData> movies) {
+        for (MovieData m : movies) {
+            String name = m.getName() != null ? m.getName() : "";
+            String year = m.getYear() > 0 ? String.valueOf(m.getYear()) : "";
+            String nameOriginal = m.getNameOriginal();
+            String nameEn = m.getNameEn();
+            if (name.isBlank()) {
+                log.error("Ошибка парсинга КП: пустое название (kpId={})", m.getKpId());
+            } else if (year.isBlank()) {
+                log.error("Ошибка парсинга КП: у фильма '{}' (kpId={}) не спарсен год", name, m.getKpId());
+            }
+            if (nameOriginal == null || nameOriginal.isBlank()) {
+                if (nameEn == null || nameEn.isBlank()) {
+                    log.warn("Внимание: у фильма '{}' ({} г., kpId={}) нет ни оригинального, ни английского названия — если страна не СНГ, это ошибка парсинга",
+                            name, year, m.getKpId());
+                } else {
+                    log.warn("Внимание: у фильма '{}' ({} г., kpId={}) нет оригинального названия — если страна не СНГ, это ошибка парсинга",
+                            name, year, m.getKpId());
+                }
+            }
+        }
+    }
+
+    /**
+     * Запускает импорт: загрузка данных выбранным способом (selenium | api | hybrid | saved),
+     * затем проставление оценок на IMDB. Выполняется в фоновом потоке,
      * прогресс публикуется через ImportProgress.
      *
-     * @param kpUserId     идентификатор пользователя КП
-     * @param logDirectory директория для файлов результатов
-     * @param parserType   способ парсинга КП (selenium | api)
-     * @param apiToken     API-токен Кинопоиска (для api)
-     * @param useSavedDump использовать сохранённый kp-ratings.csv, если он есть
+     * @param kpUserId          идентификатор пользователя КП (не нужен для способа saved)
+     * @param logDirectory      директория для файлов результатов
+     * @param parserType        способ парсинга КП (selenium | api | hybrid | saved)
+     * @param apiToken          API-токен Кинопоиска (для api и hybrid)
+     * @param realTotalRatings  реальное число оценок на КП (из проверки при открытии браузера)
      *
      * @return имя шаблона с результатами или ошибки
      */
     public String startImport(Long kpUserId, String logDirectory, String parserType, String apiToken,
-                              Boolean useSavedDump) {
+                              Long realTotalRatings) {
         WebDriver driver = authManager.getDriver();
         if (driver == null) {
             log.error("startImport: браузер не открыт");
@@ -250,34 +357,38 @@ public class Processor {
 
         logFile.setLogDir(logDirectory);
 
-        KpRatingsProvider provider = resolveEffectiveProvider(type, useSavedDump);
+        KpRatingsProvider provider = resolveProviderChecked(type);
         if (provider == null) {
             log.error("startImport: не найден провайдер для способа: {}", type);
             return ERROR;
         }
 
-        if (PARSER_API.equals(provider.getKey()) && (apiToken == null || apiToken.isBlank())) {
-            log.error("startImport: для API-парсинга не указан токен");
+        if ((PARSER_API.equals(type) || PARSER_HYBRID.equals(type)) && (apiToken == null || apiToken.isBlank())) {
+            log.error("startImport: для способа {} не указан токен", type);
+            return ERROR;
+        }
+        if (!PARSER_SAVED.equals(type) && kpUserId == null) {
+            log.error("startImport: не указан ID пользователя КП");
             return ERROR;
         }
 
-        long userId = kpUserId;
+        long userId = kpUserId != null ? kpUserId : 0L;
         String token = apiToken;
+        Long realTotal = realTotalRatings;
         log.info("Запускаю импорт для пользователя КП {}, способ {}, лог-директория: {}",
                 kpUserId, provider.getKey(), logDirectory);
-        new Thread(() -> runImportAsync(userId, driver, provider, token), "import-thread").start();
+        new Thread(() -> runImportAsync(userId, driver, provider, token, realTotal), "import-thread").start();
 
         return "importing";
     }
 
     /**
-     * Выбирает провайдер: если включён useSavedDump и в директории есть kp-ratings.csv,
-     * данные берутся из дампа, иначе — выбранным способом (api/selenium).
+     * Выбирает провайдер по способу; для «Сохранённый дамп» проверяет, что kp-ratings.csv существует.
      */
-    private KpRatingsProvider resolveEffectiveProvider(String parserType, Boolean useSavedDump) {
-        if (Boolean.TRUE.equals(useSavedDump) && logFile.existsKpDump()) {
-            log.info("Использую сохранённый дамп kp-ratings.csv");
-            return resolveProvider(PARSER_SAVED);
+    private KpRatingsProvider resolveProviderChecked(String parserType) {
+        if (PARSER_SAVED.equals(parserType) && !logFile.existsKpDump()) {
+            log.warn("Способ «Сохранённый дамп»: kp-ratings.csv не найден в директории логов");
+            return null;
         }
         return resolveProvider(parserType);
     }
@@ -289,26 +400,36 @@ public class Processor {
                 .orElse(null);
     }
 
-    private String normalizeParserType(String parserType) {
+    /** Нормализует способ парсинга; возвращает null для неизвестного. package-private для контроллера. */
+    public static String normalizeParserType(String parserType) {
         if (parserType == null) {
             return null;
         }
         String t = parserType.trim().toLowerCase();
-        if (PARSER_SELENIUM.equals(t) || PARSER_API.equals(t)) {
+        if (PARSER_SELENIUM.equals(t) || PARSER_API.equals(t) || PARSER_HYBRID.equals(t) || PARSER_SAVED.equals(t)) {
             return t;
         }
         return null;
     }
 
-    private ValidateResult validateInputData(InputData inputData) {
+    private ValidateResult validateInputData(InputData inputData, String parserType) {
         ValidateResult result = new ValidateResult();
-        if (inputData.getKpUserId() == null) {
-            result.setErrorMessage("empty KP user ID");
-            result.setHasError(true);
-        }
         if (inputData.getLogDirectory() == null || inputData.getLogDirectory().isBlank()) {
             result.setErrorMessage("empty log directory");
             result.setHasError(true);
+            return result;
+        }
+        if (!PARSER_SAVED.equals(parserType)) {
+            if (inputData.getKpUserId() == null) {
+                result.setErrorMessage("empty KP user ID");
+                result.setHasError(true);
+                return result;
+            }
+            if ((PARSER_API.equals(parserType) || PARSER_HYBRID.equals(parserType))
+                    && (inputData.getApiToken() == null || inputData.getApiToken().isBlank())) {
+                result.setErrorMessage("empty KP API token (нужен для способов API и «API + Browser»)");
+                result.setHasError(true);
+            }
         }
         return result;
     }

@@ -4,55 +4,129 @@
     <meta charset="UTF-8">
     <title>Import Complete</title>
     <style>
-        body { font-family: sans-serif; margin: 40px; }
-        .container { max-width: 800px; margin: 0 auto; }
-        .summary { display: flex; gap: 16px; flex-wrap: wrap; margin: 24px 0; }
-        .stat { padding: 16px 24px; border-radius: 8px; text-align: center; min-width: 120px; }
-        .stat.rated { background: #d4edda; border: 1px solid #c3e6cb; }
-        .stat.not-found { background: #fff3cd; border: 1px solid #ffeeba; }
-        .stat.skipped { background: #e2e3e5; border: 1px solid #d6d8db; }
-        .stat.error { background: #f8d7da; border: 1px solid #f5c6cb; }
-        .stat-num { font-size: 32px; font-weight: bold; display: block; }
-        table { width: 100%; border-collapse: collapse; margin-top: 24px; }
-        th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd; }
-        th { background: #f5f5f5; }
-        .status-RATED { color: #28a745; }
-        .status-NOT_FOUND { color: #856404; }
-        .status-SKIPPED_SAME { color: #6c757d; }
-        .status-SKIPPED_DIFFERENT { color: #e67e22; }
-        .status-ERROR { color: #dc3545; }
-        h2 { margin-top: 32px; }
-        .log-link { margin-top: 24px; }
+        body {
+            font-family: sans-serif;
+            margin: 40px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .summary {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin: 24px 0;
+        }
+
+        .stat {
+            padding: 16px 24px;
+            border-radius: 8px;
+            text-align: center;
+            min-width: 120px;
+        }
+
+        .stat.rated {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+        }
+
+        .stat.not-found {
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+        }
+
+        .stat.skipped {
+            background: #e2e3e5;
+            border: 1px solid #d6d8db;
+        }
+
+        .stat.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+        }
+
+        .stat-num {
+            font-size: 32px;
+            font-weight: bold;
+            display: block;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 24px;
+        }
+
+        th, td {
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background: #f5f5f5;
+        }
+
+        .status-RATED {
+            color: #28a745;
+        }
+
+        .status-NOT_FOUND {
+            color: #856404;
+        }
+
+        .status-SKIPPED_SAME {
+            color: #6c757d;
+        }
+
+        .status-SKIPPED_DIFFERENT {
+            color: #e67e22;
+        }
+
+        .status-ERROR {
+            color: #dc3545;
+        }
+
+        h2 {
+            margin-top: 32px;
+        }
+
+        .log-link {
+            margin-top: 24px;
+        }
     </style>
 </head>
 <body>
 <div class="container">
-    <h1>Import Complete</h1>
+    <h1>Импорт завершен</h1>
 
     <div class="summary">
         <div class="stat rated">
             <span class="stat-num" th:text="${result.rated}">0</span>
-            Rated
+            Оценка проставлена
         </div>
         <div class="stat not-found">
             <span class="stat-num" th:text="${result.notFound}">0</span>
-            Not Found
+            Не найдено
         </div>
         <div class="stat skipped">
             <span class="stat-num" th:text="${result.skippedSame}">0</span>
-            Skipped (Same)
+            Пропущено (аналогичная оценка стоит)
         </div>
         <div class="stat skipped">
             <span class="stat-num" th:text="${result.skippedDifferent}">0</span>
-            Skipped (Different)
+            Пропущено (проставлены разные оценки на КП и imdb)
         </div>
         <div class="stat error">
             <span class="stat-num" th:text="${result.errors}">0</span>
-            Errors
+            Ошибки
         </div>
     </div>
 
-    <p>Total movies from KP: <strong th:text="${result.totalMovies}">0</strong></p>
+    <p>Всего фильмов с КП: <strong th:text="${result.totalMovies}">0</strong></p>
 
     <div class="log-link">
         <p>Results saved to: <code>kp-ratings.csv</code> (in the log directory)</p>

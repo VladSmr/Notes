@@ -111,8 +111,6 @@ public class KpNotesImporter {
         return null;
     }
 
-
-
     /**
      * Читает общее количество оценок пользователя со страницы оценок КП.
      * Счётчик: в футере есть ссылка a[href*="movies/voted-watched"], внутри неё
@@ -251,14 +249,22 @@ public class KpNotesImporter {
         return false;
     }
 
-    private static final int PER_PAGE = 20;
+    static final int PER_PAGE = 20;
 
     public List<MovieData> getNotes(WebDriver driver, Long userId, ImportProgress progress) {
+        return getNotes(driver, userId, progress, 1);
+    }
+
+    /**
+     * Сканирует страницы оценок КП, начиная с {@code startPage} (для гибридного способа:
+     * первые страницы уже получены из API, остальные — сюда).
+     */
+    public List<MovieData> getNotes(WebDriver driver, Long userId, ImportProgress progress, int startPage) {
         driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
         List<MovieData> result = new ArrayList<>();
-        log.info("Начало сканирования оценок КП, пользователь {}", userId);
+        log.info("Начало сканирования оценок КП, пользователь {}, страницы с {}", userId, startPage);
 
-        for (int page = 1; page <= MAX_PAGES; page++) {
+        for (int page = startPage; page <= MAX_PAGES; page++) {
             if (progress != null && progress.isAborted()) {
                 log.info("Импорт остановлен пользователем на странице {}", page);
                 break;

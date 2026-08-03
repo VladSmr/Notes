@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Service;
 public class LogFileService {
 
     private static final String KP_DUMP_FILE = "kp-ratings.csv";
+    private static final String KP_DUMP_TMP = "kp-ratings.csv.tmp";
     private Path logDir;
 
     private void checkDir() {
@@ -25,19 +27,31 @@ public class LogFileService {
     /**
      * Сохраняет результаты импорта в CSV-файл (разделитель `;`,
      * BOM для корректного открытия в Excel в любом регионе).
+     * Запись атомарная: сначала во временный файл, затем rename поверх старого —
+     * при сбое старый файл остаётся целым, ничего не усекается.
      *
      * @param lines строки данных
      */
     public synchronized void saveKpDump(String... lines) {
         checkDir();
         Path file = logDir.resolve(KP_DUMP_FILE);
-        try (PrintWriter pw = new PrintWriter(file.toFile(), "UTF-8")) {
+        Path tmp = logDir.resolve(KP_DUMP_TMP);
+        try (PrintWriter pw = new PrintWriter(tmp.toFile(), "UTF-8")) {
             pw.print('\uFEFF');
             pw.println("title;original_title;english_title;year;rating;kp_id;imdb_id;status;error");
             for (String line : lines) {
                 pw.println(line);
             }
         } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        try {
+            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            try {
+                Files.deleteIfExists(tmp);
+            } catch (IOException ignored) {
+            }
             throw new RuntimeException(e);
         }
     }

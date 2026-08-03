@@ -47,4 +47,25 @@ public class MovieData {
         }
     }
 
+    /** Восстанавливает статус из подписи, записанной в CSV (или PENDING для пустого/неизвестного). */
+    public static MovieStatus parseStatusLabel(String label) {
+        if (label == null || label.isBlank()) {
+            return MovieStatus.PENDING;
+        }
+        switch (label.trim()) {
+            case "успешно":
+                return MovieStatus.RATED;
+            case "не найден":
+                return MovieStatus.NOT_FOUND;
+            case "пропущено (уже стоит оценка)":
+                return MovieStatus.SKIPPED_SAME;
+            case "руками (оценки отличаются)":
+                return MovieStatus.SKIPPED_DIFFERENT;
+            case "ошибка":
+                return MovieStatus.ERROR;
+            default:
+                return MovieStatus.PENDING;
+        }
+    }
+
 }

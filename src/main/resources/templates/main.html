@@ -1,59 +1,86 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
     <title>KP to IMDB Import</title>
     <style>
         body { font-family: sans-serif; margin: 40px; }
-        .container { max-width: 500px; margin: 0 auto; }
-        label { display: block; margin-bottom: 8px; font-weight: bold; }
-        input[type="number"], input[type="text"] { width: 100%; padding: 8px; margin-bottom: 16px; font-size: 16px; box-sizing: border-box; }
-        .method-row { margin-bottom: 16px; }
-        .method-row .radio { display: inline-block; font-weight: normal; margin-right: 20px; }
-        button { padding: 10px 24px; font-size: 16px; cursor: pointer; }
-        .hint { color: #666; font-size: 14px; margin-bottom: 16px; }
+        .container { max-width: 640px; margin: 0 auto; }
+        h1 { font-size: 24px; }
+        .method { display: flex; align-items: flex-start; gap: 10px; border: 2px solid #ddd; border-radius: 8px; padding: 16px; margin: 12px 0; cursor: pointer; }
+        .method:hover { border-color: #007bff; }
+        .method.selected { border-color: #007bff; background: #f0f7ff; }
+        .method input[type="radio"] { margin-top: 2px; flex: 0 0 auto; width: 16px; height: 16px; }
+        .method .body { display: flex; flex-direction: column; gap: 4px; }
+        .method .title { font-weight: bold; font-size: 16px; }
+        .method .desc { color: #444; font-size: 14px; }
+        .method .needs { color: #888; font-size: 13px; }
+        button { padding: 12px 32px; font-size: 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 6px; margin-top: 16px; }
+        button:hover { background: #0069d9; }
     </style>
 </head>
 <body>
 <div class="container">
-    <h1>Import ratings from KinoPoisk to IMDB</h1>
-    <form action="/notes/submit" method="post">
-        <label for="kpUserId">KinoPoisk User ID:</label>
-        <input type="number" id="kpUserId" name="kpUserId" required placeholder="e.g. 12345678">
-        <div class="hint">Found in your KP profile URL: https://www.kinopoisk.ru/user/<strong>USER_ID</strong>/</div>
+    <h1>Импорт оценок с Кинопоиска на IMDB</h1>
+    <p>Выберите, откуда брать оценки. Каждый способ подходит под свою ситуацию.</p>
 
-        <label for="logDirectory">Log directory:</label>
-        <input type="text" id="logDirectory" name="logDirectory" required value="D:\">
-        <div class="hint">Directory where the <code>kp-ratings.csv</code> dump will be saved.</div>
+    <form action="/notes/method" method="post" onsubmit="return checkSelected()">
 
-        <label>Parsing method:</label>
-        <div class="method-row">
-            <label class="radio"><input type="radio" name="parserType" value="selenium" checked onclick="toggleToken(this.value)"> Browser (Selenium)</label>
-            <label class="radio"><input type="radio" name="parserType" value="api" onclick="toggleToken(this.value)"> API (token)</label>
-        </div>
-        <div class="hint">Browser needs KP login and also fills in missing original titles. API uses kinopoiskapiunofficial.tech and needs a token.</div>
-
-        <label class="radio" style="display:block; margin-bottom:16px;">
-            <input type="checkbox" name="useSavedDump" checked> Use saved <code>kp-ratings.csv</code> if present (skip KP parsing)
+        <label class="method" id="m-selenium">
+            <input type="radio" name="parserType" value="selenium" onchange="selectMethod(this)">
+            <span class="body">
+                <span class="title">1. Browser (Selenium)</span>
+                <span class="desc">Полный парсинг всех оценок в открытом Chrome. Подходит для <b>любого количества оценок</b>,
+                    работает медленнее остальных (открывает страницы КП). Требуется вход в Кинопоиск в браузере.</span>
+                <span class="needs">Нужно: ID пользователя КП, вход в Кинопоиск в Chrome</span>
+            </span>
         </label>
-        <div class="hint">If the dump already exists in the log directory, data is read from it instead of calling KP/API — useful to re-run the IMDB part after errors.</div>
 
-        <div id="apiTokenRow" style="display:none;">
-            <label for="apiToken">KinoPoisk API token (for API method):</label>
-            <input type="text" id="apiToken" name="apiToken" placeholder="e.g. xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
-            <div class="hint">Get it on kinopoiskapiunofficial.tech (Settings → API key).</div>
-        </div>
+        <label class="method" id="m-api">
+            <input type="radio" name="parserType" value="api" onchange="selectMethod(this)">
+            <span class="body">
+                <span class="title">2. API (token)</span>
+                <span class="desc">Быстрый парсинг через kinopoiskapiunofficial.tech без браузера.
+                    <b>Отдаёт только последние ~1500 оценок</b> — если у вас больше, ранние оценки не попадут в импорт.</span>
+                <span class="needs">Нужно: ID пользователя КП, API-токен Кинопоиска</span>
+            </span>
+        </label>
 
-        <button type="submit">Next: Open IMDB Browser</button>
+        <label class="method" id="m-hybrid">
+            <input type="radio" name="parserType" value="hybrid" onchange="selectMethod(this)">
+            <span class="body">
+                <span class="title">3. API + Browser (гибрид)</span>
+                <span class="desc">Первые ~1500 оценок (последние) берутся через API, а более старые добираются через
+                    браузер. <b>Для тех, у кого больше 1500 оценок</b> — быстрее чистого Selenium и без потерь, в отличие от чистого API.</span>
+                <span class="needs">Нужно: ID пользователя КП, API-токен, вход в Кинопоиск в Chrome</span>
+            </span>
+        </label>
+
+        <label class="method" id="m-saved">
+            <input type="radio" name="parserType" value="saved" onchange="selectMethod(this)">
+            <span class="body">
+                <span class="title">4. Сохранённый дамп (kp-ratings.csv)</span>
+                <span class="desc">Кинопоиск не опрашивается вообще: оценки читаются из сохранённого дампа в директории логов.
+                    Подходит для <b>повторного прогона</b> после ошибок или остановки (уже обработанные фильмы пропускаются).</span>
+                <span class="needs">Нужно: только директория, где лежит kp-ratings.csv</span>
+            </span>
+        </label>
+
+        <button type="submit">Next: данные для выбранного способа</button>
     </form>
 </div>
 <script>
-    function toggleToken(value) {
-        var row = document.getElementById('apiTokenRow');
-        var input = document.getElementById('apiToken');
-        var show = value === 'api';
-        row.style.display = show ? 'block' : 'none';
-        input.required = show;
+    function selectMethod(radio) {
+        document.querySelectorAll('.method').forEach(function (el) { el.classList.remove('selected'); });
+        document.getElementById('m-' + radio.value).classList.add('selected');
+    }
+    function checkSelected() {
+        var checked = document.querySelector('input[name="parserType"]:checked');
+        if (!checked) {
+            alert('Выберите способ получения данных');
+            return false;
+        }
+        return true;
     }
 </script>
 </body>

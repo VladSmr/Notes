@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Data for import</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; }
+        .container { max-width: 520px; margin: 0 auto; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; }
+        input[type="number"], input[type="text"] { width: 100%; padding: 8px; margin-bottom: 16px; font-size: 16px; box-sizing: border-box; }
+        .hint { color: #666; font-size: 14px; margin-bottom: 16px; }
+        .info { background: #f0f7ff; border: 1px solid #b8daff; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 14px; }
+        button { padding: 10px 24px; font-size: 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 6px; }
+        button:hover { background: #0069d9; }
+        a { display: inline-block; margin-top: 16px; color: #666; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Данные для импорта</h1>
+
+    <div class="info" th:switch="${parserType}">
+        <span th:case="'selenium'"><b>Browser (Selenium):</b> парсинг всех оценок в Chrome. В браузере нужно будет войти в Кинопоиск.</span>
+        <span th:case="'api'"><b>API (token):</b> быстрый парсинг, но только последние ~1500 оценок. Браузер для парсинга не используется.</span>
+        <span th:case="'hybrid'"><b>API + Browser (гибрид):</b> последние ~1500 через API, более старые — через Chrome. Нужны токен и вход в Кинопоиск.</span>
+        <span th:case="'saved'"><b>Сохранённый дамп:</b> оценки будут прочитаны из kp-ratings.csv в указанной директории, Кинопоиск не опрашивается.</span>
+    </div>
+
+    <form action="/notes/submit" method="post">
+        <input type="hidden" name="parserType" th:value="${parserType}">
+
+        <div th:if="${parserType != 'saved'}">
+            <label for="kpUserId">ID пользователя кинопоиск:</label>
+            <input type="number" id="kpUserId" name="kpUserId" required placeholder="e.g. 12345678">
+            <div class="hint">Found in your KP profile URL: https://www.kinopoisk.ru/user/<strong>USER_ID</strong>/</div>
+        </div>
+
+        <div th:if="${parserType == 'api' or parserType == 'hybrid'}">
+            <label for="apiToken">KinoPoisk API token:</label>
+            <input type="text" id="apiToken" name="apiToken" required placeholder="e.g. xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+            <div class="hint">Get it on kinopoiskapiunofficial.tech (Settings → API key).</div>
+        </div>
+
+        <label for="logDirectory">Log directory:</label>
+        <input type="text" id="logDirectory" name="logDirectory" required value="D:\">
+        <div class="hint" th:text="${parserType == 'saved'} ? 'Directory where kp-ratings.csv already exists — it will be read from here.' : 'Directory where the kp-ratings.csv dump will be saved.'">hint</div>
+
+        <button type="submit">Next: Open IMDB Browser</button>
+    </form>
+
+    <a href="/notes/main">&larr; Choose another method</a>
+</div>
+</body>
+</html>

@@ -11,4 +11,5 @@ public class ProgressEvent {
     String status;
     boolean finished;
     AppResult result;
+    boolean paused;
 }

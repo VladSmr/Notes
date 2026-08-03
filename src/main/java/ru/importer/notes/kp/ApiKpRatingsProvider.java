@@ -104,7 +104,6 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
                     + " оценок (всего " + total + "), более ранние оценки не будут импортированы.";
             log.warn("API: {}", msg);
         }
-        log.info("API: загружено оценок: {}", result.size());
         return result;
     }
 

@@ -9,7 +9,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ru.importer.notes.dto.MovieData;
-import ru.importer.notes.kp.KpNotesImporter;
 import ru.importer.notes.log.LogFileService;
 
 import static org.junit.jupiter.api.Assertions.*;

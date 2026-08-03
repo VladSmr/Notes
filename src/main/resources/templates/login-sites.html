@@ -17,20 +17,27 @@
 <div class="container">
     <h1>Prepare both sites</h1>
 
-    <div class="step" th:if="${totalRatings != null}">
-        <p th:if="${useSavedDump}">Всего фильмов в сохранённом дампе: <strong th:text="${totalRatings}">0</strong>.</p>
-        <p th:unless="${useSavedDump}">Всего оценок на Кинопоиске: <strong th:text="${totalRatings}">0</strong>.</p>
+    <div class="step" th:if="${totalRatings != null or realTotalRatings != null}">
+        <p th:if="${parserType == 'saved'}">Фильмов в сохранённом дампе: <strong th:text="${totalRatings}">0</strong>.</p>
+        <p th:if="${parserType != 'saved'}">Всего оценок на Кинопоиске: <strong th:text="${realTotalRatings != null ? realTotalRatings : totalRatings}">0</strong>.</p>
+        <p th:if="${(parserType == 'api' or parserType == 'hybrid') and totalRatings != null and realTotalRatings != null}">
+            По данным API: <strong th:text="${totalRatings}">0</strong>.
+            <span th:if="${realTotalRatings > totalRatings}">API отдаёт не все оценки — только последние ~1500.
+                <span th:if="${parserType == 'hybrid'}">Остальные будут добраны через браузер.</span>
+                <span th:if="${parserType == 'api'}">Ранние оценки в импорт не попадут.</span>
+            </span>
+            <span th:if="${realTotalRatings < totalRatings}">API сообщает больше, чем видно на странице — часть оценок на странице скрыта.</span>
+        </p>
     </div>
 
     <div class="step">
         <p><span class="step-num">1</span>
-            <span th:if="${useSavedDump}">Данные будут взяты из сохранённого <strong>kp-ratings.csv</strong>. A new Chrome window has opened on <strong>IMDB</strong>.</span>
-            <span th:unless="${useSavedDump}">
-                <span th:if="${parserType == 'api'}">A new Chrome window has opened on <strong>IMDB</strong>.</span>
-                <span th:if="${parserType != 'api'}">A new Chrome window has opened on your <strong>Kinopoisk ratings page</strong>.</span>
-            </span>
+            <span th:if="${parserType == 'saved'}">Данные будут взяты из сохранённого <strong>kp-ratings.csv</strong>. A new Chrome window has opened on <strong>IMDB</strong>.</span>
+            <span th:if="${parserType == 'selenium'}">A new Chrome window has opened on your <strong>Kinopoisk ratings page</strong>.</span>
+            <span th:if="${parserType == 'api'}">Парсинг пойдёт через API — браузер нужен только для IMDB. A new Chrome window has opened on <strong>IMDB</strong>.</span>
+            <span th:if="${parserType == 'hybrid'}">Сначала API, затем браузер догрузит более старые оценки. A new Chrome window has opened on <strong>IMDB</strong>.</span>
         </p>
-        <p th:if="${parserType != 'api' && !useSavedDump}">If you see a Yandex login or SSO redirect — log in or wait for the page to load your ratings.</p>
+        <p th:if="${parserType == 'selenium' or parserType == 'hybrid'}">If you see a Yandex login or SSO redirect — log in or wait for the page to load your ratings.</p>
         <p>Close any popup ads if they appear.</p>
     </div>
     <div class="step">
@@ -45,12 +52,12 @@
         <input type="hidden" name="logDirectory" th:value="${logDirectory}">
         <input type="hidden" name="parserType" th:value="${parserType}">
         <input type="hidden" name="apiToken" th:value="${apiToken}">
-        <input type="hidden" name="useSavedDump" th:value="${useSavedDump}">
+        <input type="hidden" name="realTotalRatings" th:value="${realTotalRatings}">
         <button type="submit">Start Import</button>
     </form>
 
-    <div class="hint" th:if="${useSavedDump}">The import will read movies from kp-ratings.csv, then rate each one on IMDB with a 3-5 second delay.</div>
-    <div class="hint" th:unless="${useSavedDump}">The import will parse KP ratings from the open page, then rate each movie on IMDB with a 3-5 second delay.</div>
+    <div class="hint" th:if="${parserType == 'saved'}">The import will read movies from kp-ratings.csv, then rate each one on IMDB with a 1-2 second delay.</div>
+    <div class="hint" th:unless="${parserType == 'saved'}">The import will get KP ratings (as chosen), then rate each movie on IMDB with a 1-2 second delay.</div>
 </div>
 </body>
 </html>

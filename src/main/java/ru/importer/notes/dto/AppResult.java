@@ -8,7 +8,6 @@ import lombok.Setter;
 @Setter
 public class AppResult {
 
-    private boolean success;
     private int totalMovies;
     private int rated;
     private int notFound;

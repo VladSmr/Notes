@@ -16,10 +16,7 @@ public class InputData {
     /** Способ парсинга КП: selenium или api. */
     private String parserType;
 
-    /** API-токен Кинопоиска (обязателен при parserType=api). */
+    /** API-токен Кинопоиска (обязателен при parserType=api и hybrid). */
     private String apiToken;
-
-    /** Читать данные из сохранённого дампа kp-ratings.csv, если он есть. */
-    private Boolean useSavedDump;
 
 }
