@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Подтверждение перезаписи дампа</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; }
+        .container { max-width: 560px; margin: 0 auto; text-align: center; }
+        .warn { background: #fff3cd; border: 1px solid #ffeeba; border-radius: 8px; padding: 20px 24px; margin: 16px 0; text-align: left; color: #664d03; }
+        button { padding: 12px 28px; font-size: 16px; cursor: pointer; border: none; border-radius: 6px; margin: 8px; }
+        .danger { background: #dc3545; color: white; }
+        .danger:hover { background: #c82333; }
+        .cancel { background: #6c757d; color: white; }
+        .cancel:hover { background: #5a6268; }
+        a { display: inline-block; margin-top: 16px; color: #666; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Дамп уже существует</h1>
+    <div class="warn">
+        <p>В указанной директории уже есть файл <code>kp-ratings.csv</code>.</p>
+        <p>Парсинг <strong>перезапишет</strong> его новыми данными с Кинопоиска. Если вы ранее проставляли оценки на IMDB
+            (в дампе есть статусы <em>успешно / не найден / пропущено</em>) — они будут потеряны.</p>
+        <p>Продолжить перезапись?</p>
+    </div>
+
+    <form action="/notes/submit-confirmed" method="post" style="display:inline;">
+        <input type="hidden" name="parserType" th:value="${parserType}">
+        <input type="hidden" name="kpUserId" th:value="${kpUserId}">
+        <input type="hidden" name="logDirectory" th:value="${logDirectory}">
+        <input type="hidden" name="apiToken" th:value="${apiToken}">
+        <button type="submit" class="danger">Да, перезаписать дамп</button>
+    </form>
+    <a class="cancel" href="/notes/main" style="padding: 12px 28px; text-decoration: none; color: white;">Отмена</a>
+
+    <div>
+        <a href="/notes/main">&larr; Назад к выбору способа</a>
+    </div>
+</div>
+</body>
+</html>

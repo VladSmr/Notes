@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Импорт оценок с Кинопоиска на IMDB</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; }
+        .container { max-width: 680px; margin: 0 auto; }
+        h1 { font-size: 26px; }
+        .option { display: block; border: 2px solid #ddd; border-radius: 10px; padding: 20px 24px; margin: 16px 0; text-decoration: none; color: inherit; }
+        .option:hover { border-color: #007bff; background: #f0f7ff; }
+        .option .title { font-size: 20px; font-weight: bold; }
+        .option .desc { color: #444; font-size: 14px; margin-top: 6px; }
+        .notice { background: #fff3cd; border: 1px solid #ffeeba; border-radius: 8px; padding: 12px 16px; margin-top: 20px; font-size: 14px; color: #664d03; }
+        .notice.error { background: #f8d7da; border-color: #f5c6cb; color: #842029; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Импорт оценок с Кинопоиска на IMDB</h1>
+    <p>Выберите, что хотите сделать. Два этапа независимы: можно спарсить сегодня, проставить завтра, или не проставлять вовсе.</p>
+
+    <a class="option" href="/notes/main">
+        <span class="title">Парсинг</span>
+        <span class="desc">Собрать оценки с Кинопоиска (selenium / API) и сохранить в kp-ratings.csv. IMDB не участвует.</span>
+    </a>
+
+    <a class="option" href="/notes/proset">
+        <span class="title">Проставление</span>
+        <span class="desc">Проставить оценки из сохранённого дампа kp-ratings.csv на IMDB. Кинопоиск не участвует.</span>
+    </a>
+
+    <div class="notice" th:if="${processRunning}">
+        Сейчас уже идёт процесс (<strong th:text="${processStage}">?</strong>). Одновременный запуск парсинга и проставления запрещён — дождитесь завершения текущего процесса.
+    </div>
+    <div class="notice">
+        <strong>Важно:</strong> пока идёт любой процесс, не открывайте и не редактируйте файл <code>kp-ratings.csv</code> вручную.
+    </div>
+</div>
+</body>
+</html>

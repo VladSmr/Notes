@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Парсинг завершён</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; }
+        .container { max-width: 700px; margin: 0 auto; }
+        .box { background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 20px 24px; margin: 20px 0; }
+        .stat-num { font-size: 32px; font-weight: bold; }
+        a.btn { display: inline-block; padding: 12px 28px; margin: 8px; background: #007bff; color: white; text-decoration: none; border-radius: 6px; }
+        a.btn:hover { background: #0069d9; }
+        a.link { display: inline-block; margin-top: 16px; color: #666; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Парсинг завершён</h1>
+
+    <div class="box">
+        <p>Собрано оценок с Кинопоиска: <span class="stat-num" th:text="${result.totalMovies}">0</span></p>
+        <p>Результат сохранён в файл <code>kp-ratings.csv</code> (в указанной директории).</p>
+    </div>
+
+    <p>
+        <a class="btn" href="/notes/proset">Перейти к проставлению на IMDB</a>
+        <a class="btn" href="/notes/main">Повторить парсинг</a>
+    </p>
+
+    <a class="link" href="/notes/">На главную</a>
+</div>
+</body>
+</html>

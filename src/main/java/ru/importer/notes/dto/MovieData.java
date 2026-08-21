@@ -19,7 +19,7 @@ public class MovieData {
     private String errorMessage;
     private MovieStatus status = MovieStatus.PENDING;
 
-    /** Статус обработки фильма при импорте. */
+    /** Статус обработки фильма на этапе парсинга/проставления. */
     public enum MovieStatus {
         PENDING,
         NOT_FOUND,

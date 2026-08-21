@@ -2,7 +2,7 @@
 <html lang="ru" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
-    <title>KP to IMDB Import</title>
+    <title>Импорт оценок с Кинопоиска на IMDB</title>
     <style>
         body { font-family: sans-serif; margin: 40px; }
         .container { max-width: 640px; margin: 0 auto; }
@@ -17,19 +17,25 @@
         .method .needs { color: #888; font-size: 13px; }
         button { padding: 12px 32px; font-size: 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 6px; margin-top: 16px; }
         button:hover { background: #0069d9; }
+        .top-link { float: right; margin-top: 8px; color: #007bff; text-decoration: none; font-size: 15px; }
+        .notice { background: #fff3cd; border: 1px solid #ffeeba; border-radius: 8px; padding: 10px 14px; margin: 12px 0; font-size: 14px; color: #664d03; }
     </style>
 </head>
 <body>
 <div class="container">
-    <h1>Импорт оценок с Кинопоиска на IMDB</h1>
+    <a class="top-link" href="/notes/proset">Проставление оценок на IMDB &rarr;</a>
+    <h1>Парсинг оценок с Кинопоиска</h1>
     <p>Выберите, откуда брать оценки. Каждый способ подходит под свою ситуацию.</p>
+    <div class="notice" th:if="${processRunning}">
+        Сейчас уже идёт процесс (<strong th:text="${processStage}">?</strong>). Запуск нового процесса возможен только после его завершения.
+    </div>
 
     <form action="/notes/method" method="post" onsubmit="return checkSelected()">
 
         <label class="method" id="m-selenium">
             <input type="radio" name="parserType" value="selenium" onchange="selectMethod(this)">
             <span class="body">
-                <span class="title">1. Browser (Selenium)</span>
+                <span class="title">1. Браузер (Selenium)</span>
                 <span class="desc">Полный парсинг всех оценок в открытом Chrome. Подходит для <b>любого количества оценок</b>,
                     работает медленнее остальных (открывает страницы КП). Требуется вход в Кинопоиск в браузере.</span>
                 <span class="needs">Нужно: ID пользователя КП, вход в Кинопоиск в Chrome</span>
@@ -39,34 +45,14 @@
         <label class="method" id="m-api">
             <input type="radio" name="parserType" value="api" onchange="selectMethod(this)">
             <span class="body">
-                <span class="title">2. API (token)</span>
+                <span class="title">2. API (токен)</span>
                 <span class="desc">Быстрый парсинг через kinopoiskapiunofficial.tech без браузера.
-                    <b>Отдаёт только последние ~1500 оценок</b> — если у вас больше, ранние оценки не попадут в импорт.</span>
+                    API отдаёт <b>все</b> оценки пользователя.</span>
                 <span class="needs">Нужно: ID пользователя КП, API-токен Кинопоиска</span>
             </span>
         </label>
 
-        <label class="method" id="m-hybrid">
-            <input type="radio" name="parserType" value="hybrid" onchange="selectMethod(this)">
-            <span class="body">
-                <span class="title">3. API + Browser (гибрид)</span>
-                <span class="desc">Первые ~1500 оценок (последние) берутся через API, а более старые добираются через
-                    браузер. <b>Для тех, у кого больше 1500 оценок</b> — быстрее чистого Selenium и без потерь, в отличие от чистого API.</span>
-                <span class="needs">Нужно: ID пользователя КП, API-токен, вход в Кинопоиск в Chrome</span>
-            </span>
-        </label>
-
-        <label class="method" id="m-saved">
-            <input type="radio" name="parserType" value="saved" onchange="selectMethod(this)">
-            <span class="body">
-                <span class="title">4. Сохранённый дамп (kp-ratings.csv)</span>
-                <span class="desc">Кинопоиск не опрашивается вообще: оценки читаются из сохранённого дампа в директории логов.
-                    Подходит для <b>повторного прогона</b> после ошибок или остановки (уже обработанные фильмы пропускаются).</span>
-                <span class="needs">Нужно: только директория, где лежит kp-ratings.csv</span>
-            </span>
-        </label>
-
-        <button type="submit">Next: данные для выбранного способа</button>
+        <button type="submit">Далее: данные для выбранного способа</button>
     </form>
 </div>
 <script>

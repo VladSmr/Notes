@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -33,6 +34,9 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
 
     private static final int MAX_ATTEMPTS = 3;
 
+    /** Периодичность промежуточного дампа: уведомляем о каждом 100-м фильме. */
+    static final int BATCH_SIZE = 100;
+
     /** Минимальный интервал между запросами: лимит API — 2 запроса в секунду. */
     private static final long MIN_REQUEST_INTERVAL_NANOS = 600_000_000L;
 
@@ -41,12 +45,6 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
 
     /** Пауза между ретраями при 5xx/сетевых ошибках. */
     private static final long BACKOFF_ERROR_MS = 1500L;
-
-    /**
-     * Ограничение API (от разработчиков kinopoiskapiunofficial.tech): страница содержит
-     * до 20 items, и доступны не все оценки — только примерно 1500 последних.
-     */
-    private static final int API_MAX_RATINGS = 1500;
 
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
@@ -66,6 +64,12 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
 
     @Override
     public List<MovieData> fetchRatings(Long userId, String apiToken, ImportProgress progress) {
+        return fetchRatings(userId, apiToken, progress, null);
+    }
+
+    @Override
+    public List<MovieData> fetchRatings(Long userId, String apiToken, ImportProgress progress,
+                                        Consumer<List<MovieData>> onBatch) {
         if (apiToken == null || apiToken.isBlank()) {
             throw new IllegalArgumentException("Не указан API-токен Кинопоиска");
         }
@@ -73,7 +77,6 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
         List<MovieData> result = new ArrayList<>();
         int page = 1;
         int totalPages = Integer.MAX_VALUE;
-        int total = 0;
 
         while (page <= totalPages) {
             if (progress != null && progress.isAborted()) {
@@ -81,14 +84,15 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
                 break;
             }
             JsonNode root = fetchPage(userId, apiToken, page);
-            if (total == 0) {
-                total = root.path("total").asInt(0);
-            }
             totalPages = root.path("totalPages").asInt(totalPages);
             for (JsonNode item : root.path("items")) {
                 MovieData movie = mapItem(item);
                 if (movie != null) {
                     result.add(movie);
+                    // Промежуточный дамп каждые 100 оценок.
+                    if (onBatch != null && result.size() % BATCH_SIZE == 0) {
+                        onBatch.accept(result);
+                    }
                 }
             }
             log.info("API: страница {} загружена, всего фильмов: {}", page, result.size());
@@ -99,11 +103,6 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
         }
 
         log.info("API: сканирование завершено. Всего фильмов: {}", result.size());
-        if (total >= API_MAX_RATINGS) {
-            String msg = "Через API доступны только последние ~" + API_MAX_RATINGS
-                    + " оценок (всего " + total + "), более ранние оценки не будут импортированы.";
-            log.warn("API: {}", msg);
-        }
         return result;
     }
 
@@ -121,7 +120,7 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
         }
     }
 
-    private JsonNode fetchPage(Long userId, String apiToken, int page) {
+    protected JsonNode fetchPage(Long userId, String apiToken, int page) {
         Exception last = null;
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {

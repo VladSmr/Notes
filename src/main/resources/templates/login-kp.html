@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Вход в Кинопоиск</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; }
+        .container { max-width: 600px; margin: 0 auto; text-align: center; }
+        .step { background: #f5f5f5; border: 1px solid #ddd; border-radius: 8px; padding: 24px; margin: 16px 0; text-align: left; }
+        .step-num { background: #007bff; color: white; border-radius: 50%; width: 28px; height: 28px; display: inline-block; line-height: 28px; margin-right: 8px; text-align: center; }
+        button { padding: 12px 32px; font-size: 18px; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 6px; }
+        button:hover { background: #218838; }
+        .hint { color: #666; font-size: 14px; margin-top: 16px; }
+        .notice { background: #fff3cd; border: 1px solid #ffeeba; border-radius: 8px; padding: 10px 14px; margin: 12px 0; font-size: 14px; color: #664d03; text-align: left; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Парсинг: вход в Кинопоиск</h1>
+
+    <div class="step" th:if="${totalRatings != null or realTotalRatings != null}">
+        <p th:if="${parserType == 'selenium'}">Всего оценок на Кинопоиске: <strong th:text="${realTotalRatings != null ? realTotalRatings : totalRatings}">0</strong>.</p>
+        <p th:if="${parserType == 'api'}">По данным API: <strong th:text="${totalRatings}">0</strong> оценок.</p>
+    </div>
+
+    <div class="step">
+        <p><span class="step-num">1</span>
+            <span th:if="${parserType == 'selenium'}">В новом окне Chrome открылась <strong>страница ваших оценок на Кинопоиске</strong>.</span>
+            <span th:if="${parserType == 'api'}">Парсинг пойдёт через API — браузер не открывается.</span>
+        </p>
+        <p th:if="${parserType == 'selenium'}">Если появился вход через Яндекс или редирект SSO — войдите или дождитесь загрузки страницы с вашими оценками.</p>
+        <p>Закройте всплывающую рекламу, если она появится.</p>
+    </div>
+    <div class="step">
+        <p><span class="step-num">2</span> Когда страница с оценками Кинопоиска готова — нажмите кнопку ниже, чтобы начать парсинг.</p>
+    </div>
+
+    <div class="notice">
+        <strong>Важно:</strong> пока идёт парсинг, не открывайте и не редактируйте файл <code>kp-ratings.csv</code> вручную.
+    </div>
+
+    <form action="/notes/start-parsing" method="post">
+        <input type="hidden" name="kpUserId" th:value="${kpUserId}">
+        <input type="hidden" name="logDirectory" th:value="${logDirectory}">
+        <input type="hidden" name="parserType" th:value="${parserType}">
+        <input type="hidden" name="apiToken" th:value="${apiToken}">
+        <button type="submit">Начать парсинг</button>
+    </form>
+
+    <div class="hint">Парсинг соберёт оценки с Кинопоиска и сохранит их в kp-ratings.csv. IMDB на этом этапе не участвует.</div>
+</div>
+</body>
+</html>

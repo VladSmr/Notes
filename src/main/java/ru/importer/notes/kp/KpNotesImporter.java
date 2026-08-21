@@ -29,15 +29,47 @@ import ru.importer.notes.movie.ImportProgress;
 @Service
 public class KpNotesImporter {
 
-    private static final Logger log = LoggerFactory.getLogger(KpNotesImporter.class);
-
+    static final int PER_PAGE = 20;
     private static final Pattern EN_TITLE_IN_PARENS = Pattern.compile("^.+?\\((.+?)\\)$");
     private static final Pattern FILM_ID_PATTERN = Pattern.compile("/(?:film|series)/(\\d+)");
     private static final int MAX_PAGES = 300;
+    private static final Pattern PLAIN_YEAR = Pattern.compile("\\b(19\\d{2}|20\\d{2})\\b");
     private static final String VOTES_URL = "https://www.kinopoisk.ru/user/%d/movies/voted-watched/";
     private static final String VOTES_URL_PAGE = "https://www.kinopoisk.ru/user/%d/movies/voted-watched/?page=%d";
     private static final Pattern YEAR_IN_TEXT = Pattern.compile("\\((\\d{4})\\)");
-    private static final Pattern PLAIN_YEAR = Pattern.compile("\\b(19\\d{2}|20\\d{2})\\b");
+    private static final Logger log = LoggerFactory.getLogger(KpNotesImporter.class);
+
+    private String extractEnglishTitle(String fullText) {
+        String stripped = fullText.replaceAll("\\(\\d{4}(-\\d{2})?\\)\\s*$", "").trim();
+        Matcher m = EN_TITLE_IN_PARENS.matcher(stripped);
+        if (m.matches()) {
+            String candidate = m.group(1).trim();
+            if (candidate.matches("\\d{4}") || candidate.matches("\\d{4}-\\d{2}")) {
+                return null;
+            }
+            return candidate;
+        }
+        return null;
+    }
+
+    private String extractRussianTitle(String fullText) {
+        int idx = fullText.indexOf(" (");
+        if (idx > 0) {
+            return fullText.substring(0, idx).trim();
+        }
+        return fullText;
+    }
+
+    private int extractYear(String text) {
+        Matcher m = YEAR_IN_TEXT.matcher(text);
+        if (m.find()) {
+            try {
+                return Integer.parseInt(m.group(1));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return 0;
+    }
 
     /**
      * Доставляет оригинальные названия для фильмов, у которых их нет: открывает
@@ -89,28 +121,6 @@ public class KpNotesImporter {
         log.info("Загрузка оригинальных названий завершена");
     }
 
-    private String pollOriginalTitle(WebDriver driver) {
-        long deadline = System.currentTimeMillis() + 6000;
-        while (System.currentTimeMillis() < deadline) {
-            try {
-                for (WebElement el : driver.findElements(By.cssSelector("span[class*=\"originalTitle\"]"))) {
-                    String text = el.getText().trim();
-                    if (!text.isBlank()) {
-                        return text;
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-            try {
-                Thread.sleep(300);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-        return null;
-    }
-
     /**
      * Читает общее количество оценок пользователя со страницы оценок КП.
      * Счётчик: в футере есть ссылка a[href*="movies/voted-watched"], внутри неё
@@ -132,67 +142,12 @@ public class KpNotesImporter {
                     }
                 } catch (Exception ignored) {
                 }
-                try {
-                    Thread.sleep(1500);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
             }
             log.warn("Не удалось прочитать счётчик оценок КП: страница не загрузилась или счётчик не виден");
         } catch (Exception e) {
             log.warn("Не удалось прочитать счётчик оценок КП: {}", e.getMessage());
         }
         return null;
-    }
-
-    /** Парсит число оценок из футера страницы оценок КП. package-private для тестов. */
-    Integer parseTotalRatings(Document doc) {
-        for (Element link : doc.select("a[href*='movies/voted-watched']")) {
-            Element value = link.selectFirst("span[class*='statValue']");
-            if (value != null) {
-                String text = value.text().trim().replaceAll("\\D", "");
-                if (!text.isEmpty()) {
-                    try {
-                        return Integer.parseInt(text);
-                    } catch (NumberFormatException ignored) {
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    private String extractEnglishTitle(String fullText) {
-        String stripped = fullText.replaceAll("\\(\\d{4}(-\\d{2})?\\)\\s*$", "").trim();
-        Matcher m = EN_TITLE_IN_PARENS.matcher(stripped);
-        if (m.matches()) {
-            String candidate = m.group(1).trim();
-            if (candidate.matches("\\d{4}") || candidate.matches("\\d{4}-\\d{2}")) {
-                return null;
-            }
-            return candidate;
-        }
-        return null;
-    }
-
-    private String extractRussianTitle(String fullText) {
-        int idx = fullText.indexOf(" (");
-        if (idx > 0) {
-            return fullText.substring(0, idx).trim();
-        }
-        return fullText;
-    }
-
-    private int extractYear(String text) {
-        Matcher m = YEAR_IN_TEXT.matcher(text);
-        if (m.find()) {
-            try {
-                return Integer.parseInt(m.group(1));
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return 0;
     }
 
     private Element findContainer(Element filmLink) {
@@ -219,52 +174,39 @@ public class KpNotesImporter {
         return null;
     }
 
-    private boolean isRichItemContainer(Element el) {
-        if (el.children().size() < 2) {
-            return false;
+    private Element findNameElement(Element item) {
+        if (item.tagName().equals("a") && isFilmOrSeriesHref(item.attr("href")) && !item.text().isBlank()) {
+            return item;
         }
-        if (spansMultipleFilms(el)) {
-            return false;
-        }
-        for (Element a : el.select("a[href*=/film/], a[href*=/series/]")) {
-            if (!a.text().isBlank()) {
-                return true;
+
+        for (Element link : item.select("a[href*=/film/], a[href*=/series/]")) {
+            if (!link.text().isBlank()) {
+                return link;
             }
         }
-        return !el.select("[class*=\"name\"], [class*=\"Name\"], .title, [class*=\"title\"], " +
-                "span.year, [class*=\"year\"], [class*=\"value\"], [class*=\"rating\"], [class*=\"Rating\"]").isEmpty();
-    }
 
-    private boolean spansMultipleFilms(Element el) {
-        Set<Long> ids = new HashSet<>();
-        for (Element a : el.select("a[href*=/film/], a[href*=/series/]")) {
-            Matcher m = FILM_ID_PATTERN.matcher(a.attr("href"));
-            if (m.find()) {
-                ids.add(Long.parseLong(m.group(1)));
-                if (ids.size() > 1) {
-                    return true;
-                }
+        for (Element el : item.select("[class*=\"name\"], [class*=\"Name\"], .title, [class*=\"title\"]")) {
+            if (!el.text().isBlank()) {
+                return el;
             }
         }
-        return false;
-    }
 
-    static final int PER_PAGE = 20;
-
-    public List<MovieData> getNotes(WebDriver driver, Long userId, ImportProgress progress) {
-        return getNotes(driver, userId, progress, 1);
+        return null;
     }
 
     /**
-     * Сканирует страницы оценок КП, начиная с {@code startPage} (для гибридного способа:
-     * первые страницы уже получены из API, остальные — сюда).
+     * Сканирует страницы оценок КП, начиная с первой, уведомляя о накопленных порциях
+     * через {@code onBatch}. Колбэк вызывается после каждой обработанной страницы
+     * (страница содержит до {@value #PER_PAGE} фильмов), чтобы вызывающий мог периодически
+     * сохранять промежуточный дамп.
      */
-    public List<MovieData> getNotes(WebDriver driver, Long userId, ImportProgress progress, int startPage) {
+    public List<MovieData> getNotes(WebDriver driver, Long userId, ImportProgress progress,
+                                    java.util.function.Consumer<List<MovieData>> onBatch) {
         driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
         List<MovieData> result = new ArrayList<>();
-        log.info("Начало сканирования оценок КП, пользователь {}, страницы с {}", userId, startPage);
+        log.info("Начало сканирования оценок КП, пользователь {}, страницы с 1", userId);
 
-        for (int page = startPage; page <= MAX_PAGES; page++) {
+        for (int page = 1; page <= MAX_PAGES; page++) {
             if (progress != null && progress.isAborted()) {
                 log.info("Импорт остановлен пользователем на странице {}", page);
                 break;
@@ -281,7 +223,7 @@ public class KpNotesImporter {
                 if (page == 1) {
                     try {
                         Files.write(Paths.get("kp-debug-page-1.html"),
-                                driver.getPageSource().getBytes(StandardCharsets.UTF_8));
+                                    driver.getPageSource().getBytes(StandardCharsets.UTF_8));
                         log.info("Дамп HTML первой страницы сохранён в kp-debug-page-1.html");
                     } catch (IOException e) {
                         log.warn("Не удалось сохранить дамп HTML: {}", e.getMessage());
@@ -292,7 +234,7 @@ public class KpNotesImporter {
                 result.addAll(pageMovies);
 
                 log.info("Страница {} успешно просканирована: найдено {} фильмов, распарсено {}",
-                        page, pageMovies.size(), pageMovies.size());
+                         page, pageMovies.size(), pageMovies.size());
             } catch (Exception e) {
                 log.error("Ошибка при сканировании страницы {}: {}", page, e.getMessage(), e);
                 continue;
@@ -300,6 +242,11 @@ public class KpNotesImporter {
 
             if (progress != null) {
                 progress.advance(ImportProgress.PHASE_KP, "Страница " + page, "kp");
+            }
+
+            // Промежуточный дамп после каждой страницы (≈ каждые 20 фильмов).
+            if (onBatch != null && !result.isEmpty()) {
+                onBatch.accept(result);
             }
 
             if (pageMovies.size() < PER_PAGE) {
@@ -322,6 +269,42 @@ public class KpNotesImporter {
             }
         }
         return result;
+    }
+
+    private boolean isFilmOrSeriesHref(String href) {
+        return href != null && (href.contains("/film/") || href.contains("/series/"));
+    }
+
+    private boolean isRichItemContainer(Element el) {
+        if (el.children().size() < 2) {
+            return false;
+        }
+        if (spansMultipleFilms(el)) {
+            return false;
+        }
+        for (Element a : el.select("a[href*=/film/], a[href*=/series/]")) {
+            if (!a.text().isBlank()) {
+                return true;
+            }
+        }
+        return !el.select("[class*=\"name\"], [class*=\"Name\"], .title, [class*=\"title\"], " +
+                                  "span.year, [class*=\"year\"], [class*=\"value\"], [class*=\"rating\"], [class*=\"Rating\"]").isEmpty();
+    }
+
+    private void merge(MovieData target, MovieData source) {
+        if ((target.getName() == null || target.getName().isBlank())
+                && source.getName() != null && !source.getName().isBlank()) {
+            target.setName(source.getName());
+        }
+        if (target.getNameEn() == null && source.getNameEn() != null) {
+            target.setNameEn(source.getNameEn());
+        }
+        if (target.getYear() == 0 && source.getYear() > 0) {
+            target.setYear(source.getYear());
+        }
+        if (target.getKpRating() == 0 && source.getKpRating() > 0) {
+            target.setKpRating(source.getKpRating());
+        }
     }
 
     List<MovieData> parseDocument(Document doc) {
@@ -370,22 +353,6 @@ public class KpNotesImporter {
         }
 
         return movies;
-    }
-
-    private void merge(MovieData target, MovieData source) {
-        if ((target.getName() == null || target.getName().isBlank())
-                && source.getName() != null && !source.getName().isBlank()) {
-            target.setName(source.getName());
-        }
-        if (target.getNameEn() == null && source.getNameEn() != null) {
-            target.setNameEn(source.getNameEn());
-        }
-        if (target.getYear() == 0 && source.getYear() > 0) {
-            target.setYear(source.getYear());
-        }
-        if (target.getKpRating() == 0 && source.getKpRating() > 0) {
-            target.setKpRating(source.getKpRating());
-        }
     }
 
     MovieData parseItem(Element item, Long filmId) {
@@ -457,28 +424,68 @@ public class KpNotesImporter {
         return movie;
     }
 
-    private Element findNameElement(Element item) {
-        if (item.tagName().equals("a") && isFilmOrSeriesHref(item.attr("href")) && !item.text().isBlank()) {
-            return item;
+    private List<MovieData> parsePage(Long userId, int page) {
+        List<MovieData> movies;
+        try {
+            String url = String.format(VOTES_URL_PAGE, userId, page);
+            Document doc = Jsoup.connect(url)
+                                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                                .timeout(15000)
+                                .get();
+            movies = parseDocument(doc);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to parse KP page " + page, e);
         }
+        return movies;
+    }
 
-        for (Element link : item.select("a[href*=/film/], a[href*=/series/]")) {
-            if (!link.text().isBlank()) {
-                return link;
+    /**
+     * Парсит число оценок из футера страницы оценок КП. package-private для тестов.
+     */
+    Integer parseTotalRatings(Document doc) {
+        for (Element link : doc.select("a[href*='movies/voted-watched']")) {
+            Element value = link.selectFirst("span[class*='statValue']");
+            if (value != null) {
+                String text = value.text().trim().replaceAll("\\D", "");
+                if (!text.isEmpty()) {
+                    try {
+                        return Integer.parseInt(text);
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
             }
         }
-
-        for (Element el : item.select("[class*=\"name\"], [class*=\"Name\"], .title, [class*=\"title\"]")) {
-            if (!el.text().isBlank()) {
-                return el;
-            }
-        }
-
         return null;
     }
 
-    private boolean isFilmOrSeriesHref(String href) {
-        return href != null && (href.contains("/film/") || href.contains("/series/"));
+    private String pollOriginalTitle(WebDriver driver) {
+        long deadline = System.currentTimeMillis() + 6000;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                for (WebElement el : driver.findElements(By.cssSelector("span[class*=\"originalTitle\"]"))) {
+                    String text = el.getText().trim();
+                    if (!text.isBlank()) {
+                        return text;
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
+    }
+
+    private boolean spansMultipleFilms(Element el) {
+        Set<Long> ids = new HashSet<>();
+        for (Element a : el.select("a[href*=/film/], a[href*=/series/]")) {
+            Matcher m = FILM_ID_PATTERN.matcher(a.attr("href"));
+            if (m.find()) {
+                ids.add(Long.parseLong(m.group(1)));
+                if (ids.size() > 1) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private String stripGenreTail(String name) {
@@ -509,29 +516,8 @@ public class KpNotesImporter {
                 return doc;
             }
             last = count;
-            try {
-                Thread.sleep(1500);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
         }
         return Jsoup.parse(driver.getPageSource());
-    }
-
-    private List<MovieData> parsePage(Long userId, int page) {
-        List<MovieData> movies;
-        try {
-            String url = String.format(VOTES_URL_PAGE, userId, page);
-            Document doc = Jsoup.connect(url)
-                                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                                .timeout(15000)
-                                .get();
-            movies = parseDocument(doc);
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to parse KP page " + page, e);
-        }
-        return movies;
     }
 
 }

@@ -16,7 +16,7 @@ public class InputData {
     /** Способ парсинга КП: selenium или api. */
     private String parserType;
 
-    /** API-токен Кинопоиска (обязателен при parserType=api и hybrid). */
+    /** API-токен Кинопоиска (обязателен при parserType=api). */
     private String apiToken;
 
 }

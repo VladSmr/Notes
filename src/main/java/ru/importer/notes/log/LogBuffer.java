@@ -14,8 +14,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * Кольцевой буфер последних строк лога (до {@link #CAPACITY} записей) для показа
- * на веб-странице импорта. Перехватывает сообщения наших классов через logback-appender
- * и раздаёт их подписчикам SSE ({@code /notes/log}); при подключении отдаёт снимок буфера.
+ * на веб-страницах прогресса (парсинг/проставление). Перехватывает сообщения наших классов
+ * через logback-appender и раздаёт их подписчикам SSE ({@code /notes/log});
+ * при подключении отдаёт снимок буфера.
  */
 @Service
 public class LogBuffer {

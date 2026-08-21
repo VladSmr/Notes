@@ -25,7 +25,7 @@ public class LogFileService {
     }
 
     /**
-     * Сохраняет результаты импорта в CSV-файл (разделитель `;`,
+     * Сохраняет результаты обработки фильмов в CSV-файл (разделитель `;`,
      * BOM для корректного открытия в Excel в любом регионе).
      * Запись атомарная: сначала во временный файл, затем rename поверх старого —
      * при сбое старый файл остаётся целым, ничего не усекается.
@@ -43,7 +43,7 @@ public class LogFileService {
                 pw.println(line);
             }
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new KpDumpWriteException("Не удалось записать временный файл дампа: " + tmp, e);
         }
         try {
             Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
@@ -52,7 +52,7 @@ public class LogFileService {
                 Files.deleteIfExists(tmp);
             } catch (IOException ignored) {
             }
-            throw new RuntimeException(e);
+            throw new KpDumpWriteException("Не удалось переместить временный файл дампа в " + file, e);
         }
     }
 

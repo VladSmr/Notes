@@ -20,7 +20,11 @@ public class ImportProgress {
     private volatile boolean aborted;
     private volatile boolean paused;
     private volatile String pausedStatus;
+    /** Новый путь для дампа, введённый пользователем во время паузы «нужен новый путь». */
+    private volatile String newLogDir;
     private AppResult result;
+    /** Этап, который произвёл текущий результат (см. {@link #complete(String, AppResult)}). */
+    private volatile String completedStage;
 
     public void init(int total) {
         this.current = 0;
@@ -28,6 +32,7 @@ public class ImportProgress {
         this.aborted = false;
         this.paused = false;
         this.result = null;
+        this.completedStage = null;
     }
 
     public void abort() {
@@ -41,7 +46,7 @@ public class ImportProgress {
         return aborted;
     }
 
-    /** Ставит импорт на паузу и оповещает веб-страницу (status: "paused" или "paused-still-busy"). */
+    /** Ставит текущий этап на паузу и оповещает веб-страницу (status: "paused" или "paused-still-busy"). */
     public void pause(String pauseStatus) {
         synchronized (resumeMonitor) {
             paused = true;
@@ -50,7 +55,7 @@ public class ImportProgress {
         broadcast(new ProgressEvent(null, current, total, null, pauseStatus, false, null, true));
     }
 
-    /** Снимает паузу (кнопка «Продолжить») и будит заблокированный поток импорта. */
+    /** Снимает паузу (кнопка «Продолжить») и будит заблокированный поток этапа. */
     public void resume() {
         synchronized (resumeMonitor) {
             paused = false;
@@ -64,7 +69,33 @@ public class ImportProgress {
         return paused;
     }
 
-    /** Блокирует поток импорта, пока импорт на паузе (или пока не остановлен пользователем). */
+    /** Текущий статус паузы (например, "paused", "paused-still-busy", "need-new-dir"); null, если не на паузе. */
+    public String getPausedStatus() {
+        return pausedStatus;
+    }
+
+    /**
+     * Задаёт новый путь для дампа, введённый пользователем во время паузы «нужен новый путь».
+     * Значение считывается фоновым потоком через {@link #consumeNewLogDir()} после {@link #resume()}.
+     *
+     * @param dir новый путь к директории дампа
+     */
+    public void setNewLogDir(String dir) {
+        this.newLogDir = dir;
+    }
+
+    /**
+     * Возвращает и сбрасывает введённый пользователем новый путь (однократное потребление).
+     *
+     * @return новый путь или null, если пользователь его не задал
+     */
+    public String consumeNewLogDir() {
+        String dir = this.newLogDir;
+        this.newLogDir = null;
+        return dir;
+    }
+
+    /** Блокирует поток этапа, пока он на паузе (или пока не остановлен пользователем). */
     public void waitWhilePaused() {
         synchronized (resumeMonitor) {
             while (paused && !aborted) {
@@ -96,13 +127,27 @@ public class ImportProgress {
         }
     }
 
-    public synchronized void complete(AppResult result) {
+    /**
+     * Завершает процесс и сохраняет результат вместе с этапом-производителем.
+     * Позволяет страницам результатов отличать результат парсинга от результата
+     * проставления, даже если оба используют один общий {@link ImportProgress}.
+     *
+     * @param stage  этап-производитель ("parsing" | "proset") или null
+     * @param result итоговый результат
+     */
+    public synchronized void complete(String stage, AppResult result) {
         this.result = result;
+        this.completedStage = stage;
         broadcast(new ProgressEvent(null, current, total, null, "complete", true, result, false));
     }
 
     public AppResult getResult() {
         return result;
+    }
+
+    /** Этап, который произвёл текущий результат (null, если результат ещё не установлен). */
+    public String getCompletedStage() {
+        return completedStage;
     }
 
     public SseEmitter subscribe() {

@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
-    <title>Import in Progress</title>
+    <title>Проставление в процессе</title>
     <style>
         body { font-family: sans-serif; margin: 40px; }
         .container { max-width: 600px; margin: 0 auto; text-align: center; }
@@ -20,6 +20,7 @@
         .recent-row { font-size: 13px; color: #555; padding: 3px 0; border-bottom: 1px dotted #eee; }
         .recent-name { margin-right: 8px; }
         .recent-status { color: #007bff; }
+        .notice { background: #fff3cd; border: 1px solid #ffeeba; border-radius: 8px; padding: 10px 14px; margin: 16px 0; font-size: 14px; color: #664d03; text-align: left; }
         .log { margin-top: 24px; text-align: left; border-top: 1px solid #ddd; padding-top: 8px; }
         .log-title { font-size: 13px; color: #999; margin-bottom: 4px; }
         .log-window { max-height: 200px; overflow-y: auto; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; padding: 8px; font-family: monospace; font-size: 12px; color: #333; }
@@ -28,7 +29,7 @@
 </head>
 <body>
 <div class="container">
-    <h1>Импорт оценок...</h1>
+    <h1>Проставление оценок на IMDB...</h1>
 
     <div class="progress-bar">
         <div class="progress-fill" id="progress-fill"></div>
@@ -44,9 +45,23 @@
         <div id="recent-list"></div>
     </div>
 
+    <div class="notice">
+        <strong>Важно:</strong> не открывайте и не редактируйте файл <code>kp-ratings.csv</code> вручную, пока идёт проставление.
+    </div>
+
     <button id="pause-btn" onclick="pauseImport()" style="margin-top: 24px; padding: 10px 24px; font-size: 16px; cursor: pointer; background: #ffc107; color: white; border: none; border-radius: 6px;">Пауза</button>
     <button id="stop-btn" onclick="stopImport()" style="margin-top: 24px; padding: 10px 24px; font-size: 16px; cursor: pointer; background: #dc3545; color: white; border: none; border-radius: 6px;">Прекратить</button>
     <button id="resume-btn" onclick="resumeImport()" style="display: none; margin-top: 24px; padding: 10px 24px; font-size: 16px; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 6px;">Продолжить</button>
+
+    <div id="new-dir-panel" style="display: none; margin-top: 24px; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 8px; padding: 16px; text-align: left;">
+        <div style="font-weight: bold; color: #721c24; margin-bottom: 8px;">Не удалось записать дамп в текущую директорию (нет прав)</div>
+        <div style="color: #721c24; margin-bottom: 12px; font-size: 14px;">Укажите другую директорию, например <code>D:\notes\</code>. Весь накопленный дамп будет скопирован туда автоматически.</div>
+        <div style="display: flex; gap: 8px;">
+            <input type="text" id="new-dir-input" placeholder="Например, D:\notes\" style="flex: 1; padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px;">
+            <button id="change-dir-btn" onclick="changeLogDir()" style="padding: 10px 20px; font-size: 14px; cursor: pointer; background: #17a2b8; color: white; border: none; border-radius: 6px;">Сохранить в новый путь</button>
+        </div>
+        <div id="new-dir-error" style="color: #721c24; margin-top: 8px; font-size: 13px;"></div>
+    </div>
 
     <div class="log">
         <div class="log-title">Лог:</div>
@@ -90,25 +105,33 @@
         }
 
         if (data.paused) {
-            document.getElementById('resume-btn').style.display = 'inline-block';
             document.getElementById('pause-btn').style.display = 'none';
             document.getElementById('stop-btn').disabled = false;
-            if (data.status === 'paused-still-busy') {
-                document.getElementById('status-text').textContent = 'File is still busy: close it and click Continue';
-            } else if (data.status === 'paused-user') {
-                document.getElementById('status-text').textContent = 'Paused. Click Continue to resume.';
+            if (data.status === 'need-new-dir') {
+                document.getElementById('resume-btn').style.display = 'none';
+                document.getElementById('new-dir-panel').style.display = 'block';
+                document.getElementById('status-text').textContent = 'Не удалось записать дамп (нет прав). Укажите новый путь.';
             } else {
-                document.getElementById('status-text').textContent = 'Paused: close the CSV file and click Continue';
+                document.getElementById('new-dir-panel').style.display = 'none';
+                document.getElementById('resume-btn').style.display = 'inline-block';
+                if (data.status === 'paused-still-busy') {
+                    document.getElementById('status-text').textContent = 'Файл всё ещё занят: закройте его и нажмите «Продолжить»';
+                } else if (data.status === 'paused-user') {
+                    document.getElementById('status-text').textContent = 'Пауза. Нажмите «Продолжить», чтобы возобновить.';
+                } else {
+                    document.getElementById('status-text').textContent = 'Пауза: закройте CSV-файл и нажмите «Продолжить»';
+                }
             }
             return;
         }
 
         if (data.status === 'resumed') {
             document.getElementById('resume-btn').style.display = 'none';
+            document.getElementById('new-dir-panel').style.display = 'none';
             document.getElementById('pause-btn').style.display = 'inline-block';
             document.getElementById('pause-btn').disabled = false;
             document.getElementById('stop-btn').disabled = false;
-            document.getElementById('status-text').textContent = 'Resuming...';
+            document.getElementById('status-text').textContent = 'Продолжаю...';
             return;
         }
 
@@ -117,15 +140,10 @@
         var fill = document.getElementById('progress-fill');
         if (data.phase === 'kp') {
             pct = 0;
-            document.getElementById('counter').textContent = 'Scanning...';
+            document.getElementById('counter').textContent = 'Чтение дампа...';
             fill.classList.add('scanning');
-            if (data.status === 'api') {
-                statusText = data.movieName || 'Parsing Kinopoisk ratings...';
-                document.getElementById('movie-name').textContent = '';
-            } else {
-                statusText = 'Parsing Kinopoisk ratings...';
-                document.getElementById('movie-name').textContent = data.movieName || '';
-            }
+            statusText = 'Чтение kp-ratings.csv...';
+            document.getElementById('movie-name').textContent = '';
         } else {
             if (currentMovie) {
                 addProcessed(currentMovie);
@@ -143,42 +161,70 @@
         var elapsed = Math.floor((Date.now() - startTime) / 1000);
         var mins = Math.floor(elapsed / 60);
         var secs = elapsed % 60;
-        document.getElementById('elapsed').textContent = 'Elapsed: ' + mins + 'm ' + secs + 's';
+        document.getElementById('elapsed').textContent = 'Прошло: ' + mins + 'м ' + secs + 'с';
     };
 
     source.onerror = function() {
         source.close();
-        document.getElementById('status-text').textContent = 'Connection lost. Redirecting...';
+        document.getElementById('status-text').textContent = 'Соединение потеряно. Перенаправление...';
         setTimeout(function() { window.location.href = '/notes/result'; }, 2000);
     };
 
     function stopImport() {
         fetch('/notes/stop', { method: 'POST' });
-        document.getElementById('status-text').textContent = 'Stopping...';
+        document.getElementById('status-text').textContent = 'Остановка...';
         document.getElementById('stop-btn').disabled = true;
         document.getElementById('pause-btn').disabled = true;
     }
 
     function pauseImport() {
         fetch('/notes/pause', { method: 'POST' });
-        document.getElementById('status-text').textContent = 'Pausing after the current movie...';
+        document.getElementById('status-text').textContent = 'Пауза после текущего фильма...';
         document.getElementById('pause-btn').disabled = true;
     }
 
     function resumeImport() {
         fetch('/notes/resume', { method: 'POST' });
         document.getElementById('resume-btn').disabled = true;
-        document.getElementById('status-text').textContent = 'Resuming...';
+        document.getElementById('status-text').textContent = 'Продолжаю...';
+    }
+
+    function changeLogDir() {
+        var dir = document.getElementById('new-dir-input').value.trim();
+        var errEl = document.getElementById('new-dir-error');
+        if (!dir) {
+            errEl.textContent = 'Введите путь к директории.';
+            return;
+        }
+        errEl.textContent = '';
+        document.getElementById('change-dir-btn').disabled = true;
+        fetch('/notes/change-log-dir', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'logDirectory=' + encodeURIComponent(dir)
+        }).then(function(resp) { return resp.text(); }).then(function(text) {
+            document.getElementById('change-dir-btn').disabled = false;
+            if (text === 'changed') {
+                document.getElementById('status-text').textContent = 'Применяю новый путь...';
+            } else if (text === 'empty') {
+                errEl.textContent = 'Введите путь к директории.';
+            } else {
+                errEl.textContent = 'Не удалось применить путь. Попробуйте ещё раз.';
+            }
+        }).catch(function() {
+            document.getElementById('change-dir-btn').disabled = false;
+            errEl.textContent = 'Ошибка сети. Попробуйте ещё раз.';
+        });
     }
 
     function getStatusText(s) {
         var map = {
-            'RATED': 'Rated',
-            'NOT_FOUND': 'Not found on IMDB',
-            'SKIPPED_SAME': 'Skipped (same rating)',
-            'SKIPPED_DIFFERENT': 'Skipped (different rating)',
-            'ERROR': 'Error',
-            'complete': 'Completed'
+            'RATED': 'Оценка проставлена',
+            'NOT_FOUND': 'Не найдено на IMDB',
+            'SKIPPED_SAME': 'Пропущено (та же оценка)',
+            'SKIPPED_DIFFERENT': 'Пропущено (разные оценки)',
+            'ERROR': 'Ошибка',
+            'complete': 'Завершено'
         };
         return map[s] || s;
     }

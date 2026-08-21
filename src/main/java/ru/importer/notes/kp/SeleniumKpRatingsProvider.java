@@ -1,6 +1,7 @@
 package ru.importer.notes.kp;
 
 import java.util.List;
+import java.util.function.Consumer;
 import org.openqa.selenium.WebDriver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,11 +31,19 @@ public class SeleniumKpRatingsProvider implements KpRatingsProvider {
 
     @Override
     public List<MovieData> fetchRatings(Long userId, String apiToken, ImportProgress progress) {
+        return fetchRatings(userId, apiToken, progress, null);
+    }
+
+    @Override
+    public List<MovieData> fetchRatings(Long userId, String apiToken, ImportProgress progress,
+                                        Consumer<List<MovieData>> onBatch) {
         WebDriver driver = authManager.getDriver();
         if (driver == null) {
             throw new IllegalStateException("Browser is not open");
         }
-        List<MovieData> movies = notesImporter.getNotes(driver, userId, progress);
+        // getNotes наполняет список по страницам (≈20 фильмов) — колбэк вызывается после
+        // каждой страницы, чтобы промежуточный дамп появлялся по ходу парсинга.
+        List<MovieData> movies = notesImporter.getNotes(driver, userId, progress, onBatch);
 
         long missingOriginals = movies.stream()
                 .filter(m -> m.getNameEn() == null || m.getNameEn().isBlank())

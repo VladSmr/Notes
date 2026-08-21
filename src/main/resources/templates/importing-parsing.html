@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Парсинг в процессе</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; }
+        .container { max-width: 600px; margin: 0 auto; text-align: center; }
+        .progress-bar { width: 100%; height: 24px; background: #e9ecef; border-radius: 12px; overflow: hidden; margin: 24px 0; }
+        .progress-fill { height: 100%; background: #007bff; width: 0%; transition: width 0.3s; border-radius: 12px; }
+        .progress-fill.scanning { background: linear-gradient(90deg, #007bff, #66b0ff, #007bff); background-size: 200% 100%; animation: slide 1.5s linear infinite; }
+        @keyframes slide { 0% { background-position: 0% 0; } 100% { background-position: 200% 0; } }
+        .status { margin: 16px 0; color: #666; }
+        .movie-name { font-size: 18px; margin: 8px 0; }
+        .counter { font-size: 14px; color: #999; }
+        .elapsed { font-size: 14px; color: #999; margin-top: 8px; }
+        .notice { background: #fff3cd; border: 1px solid #ffeeba; border-radius: 8px; padding: 10px 14px; margin: 16px 0; font-size: 14px; color: #664d03; text-align: left; }
+        .log { margin-top: 24px; text-align: left; border-top: 1px solid #ddd; padding-top: 8px; }
+        .log-title { font-size: 13px; color: #999; margin-bottom: 4px; }
+        .log-window { max-height: 200px; overflow-y: auto; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; padding: 8px; font-family: monospace; font-size: 12px; color: #333; }
+        .log-line { white-space: pre-wrap; word-break: break-all; line-height: 1.4; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Парсинг оценок с Кинопоиска...</h1>
+
+    <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+    </div>
+
+    <div class="status" id="status-text">Начинаю...</div>
+    <div class="movie-name" id="movie-name"></div>
+    <div class="counter" id="counter"></div>
+    <div class="elapsed" id="elapsed"></div>
+
+    <div class="notice">
+        <strong>Важно:</strong> не открывайте и не редактируйте файл <code>kp-ratings.csv</code> вручную, пока идёт парсинг.
+    </div>
+
+    <button id="pause-btn" onclick="pauseImport()" style="margin-top: 24px; padding: 10px 24px; font-size: 16px; cursor: pointer; background: #ffc107; color: white; border: none; border-radius: 6px;">Пауза</button>
+    <button id="stop-btn" onclick="stopImport()" style="margin-top: 24px; padding: 10px 24px; font-size: 16px; cursor: pointer; background: #dc3545; color: white; border: none; border-radius: 6px;">Прекратить</button>
+    <button id="resume-btn" onclick="resumeImport()" style="display: none; margin-top: 24px; padding: 10px 24px; font-size: 16px; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 6px;">Продолжить</button>
+
+    <div id="new-dir-panel" style="display: none; margin-top: 24px; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 8px; padding: 16px; text-align: left;">
+        <div style="font-weight: bold; color: #721c24; margin-bottom: 8px;">Не удалось записать дамп в текущую директорию (нет прав)</div>
+        <div style="color: #721c24; margin-bottom: 12px; font-size: 14px;">Укажите другую директорию, например <code>D:\notes\</code>. Весь накопленный дамп будет скопирован туда автоматически.</div>
+        <div style="display: flex; gap: 8px;">
+            <input type="text" id="new-dir-input" placeholder="Например, D:\notes\" style="flex: 1; padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px;">
+            <button id="change-dir-btn" onclick="changeLogDir()" style="padding: 10px 20px; font-size: 14px; cursor: pointer; background: #17a2b8; color: white; border: none; border-radius: 6px;">Сохранить в новый путь</button>
+        </div>
+        <div id="new-dir-error" style="color: #721c24; margin-top: 8px; font-size: 13px;"></div>
+    </div>
+
+    <div class="log">
+        <div class="log-title">Лог:</div>
+        <div class="log-window" id="log-window"></div>
+    </div>
+</div>
+
+<script>
+    var startTime = Date.now();
+    var source = new EventSource('/notes/progress');
+    var logSource = new EventSource('/notes/log');
+
+    logSource.onmessage = function(event) {
+        var win = document.getElementById('log-window');
+        var line = document.createElement('div');
+        line.className = 'log-line';
+        line.textContent = event.data;
+        win.appendChild(line);
+        while (win.children.length > 1000) {
+            win.removeChild(win.firstChild);
+        }
+        win.scrollTop = win.scrollHeight;
+    };
+
+    logSource.onerror = function() {
+        logSource.close();
+    };
+
+    source.onmessage = function(event) {
+        var data = JSON.parse(event.data);
+
+        if (data.finished) {
+            source.close();
+            if (data.result && data.result.errorMessage) {
+                window.location.href = '/notes/error?message=' + encodeURIComponent(data.result.errorMessage);
+            } else {
+                window.location.href = '/notes/parsing-result';
+            }
+            return;
+        }
+
+        if (data.paused) {
+            document.getElementById('pause-btn').style.display = 'none';
+            document.getElementById('stop-btn').disabled = false;
+            if (data.status === 'need-new-dir') {
+                document.getElementById('resume-btn').style.display = 'none';
+                document.getElementById('new-dir-panel').style.display = 'block';
+                document.getElementById('status-text').textContent = 'Не удалось записать дамп (нет прав). Укажите новый путь.';
+            } else {
+                document.getElementById('new-dir-panel').style.display = 'none';
+                document.getElementById('resume-btn').style.display = 'inline-block';
+                if (data.status === 'paused-still-busy') {
+                    document.getElementById('status-text').textContent = 'Файл всё ещё занят: закройте его и нажмите «Продолжить»';
+                } else if (data.status === 'paused-user') {
+                    document.getElementById('status-text').textContent = 'Пауза. Нажмите «Продолжить», чтобы возобновить.';
+                } else {
+                    document.getElementById('status-text').textContent = 'Пауза: закройте CSV-файл и нажмите «Продолжить»';
+                }
+            }
+            return;
+        }
+
+        if (data.status === 'resumed') {
+            document.getElementById('resume-btn').style.display = 'none';
+            document.getElementById('new-dir-panel').style.display = 'none';
+            document.getElementById('pause-btn').style.display = 'inline-block';
+            document.getElementById('pause-btn').disabled = false;
+            document.getElementById('stop-btn').disabled = false;
+            document.getElementById('status-text').textContent = 'Продолжаю...';
+            return;
+        }
+
+        var pct;
+        var fill = document.getElementById('progress-fill');
+        if (data.phase === 'kp') {
+            pct = 0;
+            document.getElementById('counter').textContent = 'Сканирование...';
+            fill.classList.add('scanning');
+            document.getElementById('movie-name').textContent = data.movieName || '';
+            document.getElementById('status-text').textContent = data.status === 'api'
+                ? (data.movieName || 'Парсинг оценок Кинопоиска...')
+                : 'Парсинг оценок Кинопоиска...';
+        } else {
+            pct = data.total > 0 ? Math.round(data.current / data.total * 100) : 0;
+            document.getElementById('movie-name').textContent = data.movieName || '';
+            document.getElementById('counter').textContent = data.current + ' / ' + data.total;
+            fill.classList.remove('scanning');
+            document.getElementById('status-text').textContent = 'Обработка...';
+        }
+        fill.style.width = pct + '%';
+
+        var elapsed = Math.floor((Date.now() - startTime) / 1000);
+        var mins = Math.floor(elapsed / 60);
+        var secs = elapsed % 60;
+        document.getElementById('elapsed').textContent = 'Прошло: ' + mins + 'м ' + secs + 'с';
+    };
+
+    source.onerror = function() {
+        source.close();
+        document.getElementById('status-text').textContent = 'Соединение потеряно. Перенаправление...';
+        setTimeout(function() { window.location.href = '/notes/parsing-result'; }, 2000);
+    };
+
+    function stopImport() {
+        fetch('/notes/stop', { method: 'POST' });
+        document.getElementById('status-text').textContent = 'Остановка...';
+        document.getElementById('stop-btn').disabled = true;
+        document.getElementById('pause-btn').disabled = true;
+    }
+
+    function pauseImport() {
+        fetch('/notes/pause', { method: 'POST' });
+        document.getElementById('status-text').textContent = 'Пауза после текущего шага...';
+        document.getElementById('pause-btn').disabled = true;
+    }
+
+    function resumeImport() {
+        fetch('/notes/resume', { method: 'POST' });
+        document.getElementById('resume-btn').disabled = true;
+        document.getElementById('status-text').textContent = 'Продолжаю...';
+    }
+
+    function changeLogDir() {
+        var dir = document.getElementById('new-dir-input').value.trim();
+        var errEl = document.getElementById('new-dir-error');
+        if (!dir) {
+            errEl.textContent = 'Введите путь к директории.';
+            return;
+        }
+        errEl.textContent = '';
+        document.getElementById('change-dir-btn').disabled = true;
+        fetch('/notes/change-log-dir', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'logDirectory=' + encodeURIComponent(dir)
+        }).then(function(resp) { return resp.text(); }).then(function(text) {
+            document.getElementById('change-dir-btn').disabled = false;
+            if (text === 'changed') {
+                document.getElementById('status-text').textContent = 'Применяю новый путь...';
+            } else if (text === 'empty') {
+                errEl.textContent = 'Введите путь к директории.';
+            } else {
+                errEl.textContent = 'Не удалось применить путь. Попробуйте ещё раз.';
+            }
+        }).catch(function() {
+            document.getElementById('change-dir-btn').disabled = false;
+            errEl.textContent = 'Ошибка сети. Попробуйте ещё раз.';
+        });
+    }
+</script>
+</body>
+</html>

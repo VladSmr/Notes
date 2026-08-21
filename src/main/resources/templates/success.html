@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
-    <title>Import Complete</title>
+    <title>Импорт завершён</title>
     <style>
         body {
             font-family: sans-serif;
@@ -118,7 +118,7 @@
         </div>
         <div class="stat skipped">
             <span class="stat-num" th:text="${result.skippedDifferent}">0</span>
-            Пропущено (проставлены разные оценки на КП и imdb)
+            Пропущено (проставлены разные оценки на КП и IMDB)
         </div>
         <div class="stat error">
             <span class="stat-num" th:text="${result.errors}">0</span>
@@ -129,22 +129,22 @@
     <p>Всего фильмов с КП: <strong th:text="${result.totalMovies}">0</strong></p>
 
     <div class="log-link">
-        <p>Results saved to: <code>kp-ratings.csv</code> (in the log directory)</p>
+        <p>Результат сохранён в: <code>kp-ratings.csv</code> (в указанной директории)</p>
     </div>
 
-    <h2>Details</h2>
+    <h2>Детали</h2>
     <table>
         <thead>
         <tr>
             <th>#</th>
-            <th>Movie</th>
-            <th>Original Title</th>
-            <th>Year</th>
-            <th>KP Rating</th>
-            <th>IMDB Rating</th>
+            <th>Фильм</th>
+            <th>Оригинальное название</th>
+            <th>Год</th>
+            <th>Оценка КП</th>
+            <th>Оценка IMDB</th>
             <th>IMDB ID</th>
-            <th>Status</th>
-            <th>Error</th>
+            <th>Статус</th>
+            <th>Ошибка</th>
         </tr>
         </thead>
         <tbody>
@@ -163,7 +163,7 @@
     </table>
 
     <p style="margin-top: 24px;">
-        <a href="/notes/main">Start another import</a>
+        <a href="/notes/">На главную</a>
     </p>
 </div>
 </body>
