@@ -29,9 +29,9 @@
             <span th:if="${parserType == 'api'}">Парсинг пойдёт через API — браузер не открывается.</span>
         </p>
         <p th:if="${parserType == 'selenium'}">Если появился вход через Яндекс или редирект SSO — войдите или дождитесь загрузки страницы с вашими оценками.</p>
-        <p>Закройте всплывающую рекламу, если она появится.</p>
+        <p th:if="${parserType == 'selenium'}">Закройте всплывающую рекламу, если она появится.</p>
     </div>
-    <div class="step">
+    <div class="step" th:if="${parserType == 'selenium'}">
         <p><span class="step-num">2</span> Когда страница с оценками Кинопоиска готова — нажмите кнопку ниже, чтобы начать парсинг.</p>
     </div>
 
@@ -44,6 +44,7 @@
         <input type="hidden" name="logDirectory" th:value="${logDirectory}">
         <input type="hidden" name="parserType" th:value="${parserType}">
         <input type="hidden" name="apiToken" th:value="${apiToken}">
+        <input type="hidden" name="totalRatings" th:value="${totalRatings}">
         <button type="submit">Начать парсинг</button>
     </form>
 

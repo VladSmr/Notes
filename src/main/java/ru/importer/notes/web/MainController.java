@@ -14,6 +14,7 @@ import ru.importer.notes.log.LogBuffer;
 import ru.importer.notes.movie.ImportProgress;
 import ru.importer.notes.movie.ProcessCoordinator;
 import ru.importer.notes.movie.Processor;
+import ru.importer.notes.util.WorkingDir;
 
 @Controller
 @RequestMapping("/")
@@ -53,6 +54,7 @@ public class MainController {
     public String proset(Model model) {
         model.addAttribute("processRunning", coordinator.isRunning());
         model.addAttribute("processStage", coordinator.getStage());
+        model.addAttribute("defaultLogDir", WorkingDir.defaultWorkingDir());
         return "proset-form";
     }
 
@@ -65,6 +67,7 @@ public class MainController {
             return "error";
         }
         model.addAttribute("parserType", type);
+        model.addAttribute("defaultLogDir", WorkingDir.defaultWorkingDir());
         return "method-form";
     }
 
@@ -86,13 +89,14 @@ public class MainController {
                                @RequestParam String logDirectory,
                                @RequestParam String parserType,
                                @RequestParam(required = false) String apiToken,
+                               @RequestParam(required = false) Integer totalRatings,
                                Model model) {
         if (coordinator.isRunning()) {
             model.addAttribute("errorMessage", "Процесс уже идёт (этап: " + coordinator.getStage()
                     + "). Дождитесь его завершения.");
             return "error";
         }
-        return processor.startParsing(kpUserId, logDirectory, parserType, apiToken, model);
+        return processor.startParsing(kpUserId, logDirectory, parserType, apiToken, totalRatings, model);
     }
 
     /** Результат этапа «Парсинг». Показывается только если последний завершённый этап — парсинг. */

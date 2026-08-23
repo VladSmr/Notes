@@ -20,8 +20,8 @@
     <h1>Данные для импорта</h1>
 
     <div class="info" th:switch="${parserType}">
-        <span th:case="'selenium'"><b>Браузер (Selenium):</b> парсинг всех оценок в Chrome. В браузере нужно будет войти в Кинопоиск.</span>
-        <span th:case="'api'"><b>API (токен):</b> быстрый парсинг через API — отдаёт все оценки. Браузер для парсинга не используется.</span>
+        <span th:case="'selenium'"><b>Браузер:</b> парсинг всех оценок в Chrome. В браузере нужно будет войти в Кинопоиск.</span>
+        <span th:case="'api'"><b>Kinopoisk API:</b> быстрый парсинг через API — отдаёт почти все оценки. Браузер для парсинга не используется.</span>
     </div>
 
     <form action="/notes/submit" method="post">
@@ -34,15 +34,14 @@
         <div th:if="${parserType == 'api'}">
             <label for="apiToken">API-токен Кинопоиска:</label>
             <input type="text" id="apiToken" name="apiToken" required placeholder="например, xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
-            <div class="hint">Получить можно на kinopoiskapiunofficial.tech (настройки → API-ключ).</div>
+            <div class="hint">Получить можно на kinopoiskapiunofficial.tech (профиль → API-ключ). Регистрация бесплатная</div>
         </div>
 
         <label for="logDirectory">Директория для файлов:</label>
-        <input type="text" id="logDirectory" name="logDirectory" required value="D:\">
-        <div class="hint">Директория, куда будет сохранён дамп kp-ratings.csv.</div>
-        <div class="hint">Не указывайте корень диска (например C:\ или D:\) — Windows запрещает запись в корень системного диска. Укажите подпапку, например D:\notes\.</div>
+        <input type="text" id="logDirectory" name="logDirectory" required th:value="${defaultLogDir}">
+        <div class="hint">Директория, куда будет сохранён дамп kp-ratings.csv. По умолчанию — рабочая папка приложения в вашем профиле (%USERPROFILE%\KP-IMDB-Importer). Можно указать свою.</div>
 
-        <button type="submit">Далее: открыть браузер Кинопоиска</button>
+        <button type="submit">Далее</button>
     </form>
 
     <a href="/notes/main">&larr; Выбрать другой способ</a>

@@ -25,7 +25,7 @@
 <div class="container">
     <a class="top-link" href="/notes/proset">Проставление оценок на IMDB &rarr;</a>
     <h1>Парсинг оценок с Кинопоиска</h1>
-    <p>Выберите, откуда брать оценки. Каждый способ подходит под свою ситуацию.</p>
+    <p>Есть два способа:</p>
     <div class="notice" th:if="${processRunning}">
         Сейчас уже идёт процесс (<strong th:text="${processStage}">?</strong>). Запуск нового процесса возможен только после его завершения.
     </div>
@@ -35,9 +35,9 @@
         <label class="method" id="m-selenium">
             <input type="radio" name="parserType" value="selenium" onchange="selectMethod(this)">
             <span class="body">
-                <span class="title">1. Браузер (Selenium)</span>
+                <span class="title">1. Браузер</span>
                 <span class="desc">Полный парсинг всех оценок в открытом Chrome. Подходит для <b>любого количества оценок</b>,
-                    работает медленнее остальных (открывает страницы КП). Требуется вход в Кинопоиск в браузере.</span>
+                    работает значительно медленнее (открывает страницы КП). Требуется вход в Кинопоиск в браузере.</span>
                 <span class="needs">Нужно: ID пользователя КП, вход в Кинопоиск в Chrome</span>
             </span>
         </label>
@@ -45,10 +45,10 @@
         <label class="method" id="m-api">
             <input type="radio" name="parserType" value="api" onchange="selectMethod(this)">
             <span class="body">
-                <span class="title">2. API (токен)</span>
+                <span class="title">2. Kinopoisk API</span>
                 <span class="desc">Быстрый парсинг через kinopoiskapiunofficial.tech без браузера.
-                    API отдаёт <b>все</b> оценки пользователя.</span>
-                <span class="needs">Нужно: ID пользователя КП, API-токен Кинопоиска</span>
+                    API отдаёт <b>почти все</b> оценки пользователя.</span>
+                <span class="needs">Нужно: ID пользователя КП, API-токен</span>
             </span>
         </label>
 

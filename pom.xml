@@ -13,15 +13,21 @@
 
     <groupId>ru.importer</groupId>
     <artifactId>notes</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>1.0.0</version>
     <name>notes</name>
     <description>notes</description>
 
     <properties>
         <java.version>21</java.version>
         <selenium.version>4.21.0</selenium.version>
+        <javafx.version>21.0.2</javafx.version>
+        <javafx.platform>win</javafx.platform>
         <skipTests>true</skipTests>
         <excludedGroups>integration</excludedGroups>
+        <jpackage.type>msi</jpackage.type>
+        <jpackage.name>KP IMDB Importer</jpackage.name>
+        <jpackage.vendor>KP IMDB Importer</jpackage.vendor>
+        <jpackage.appVersion>1.0.0</jpackage.appVersion>
     </properties>
 
     <dependencies>
@@ -40,7 +46,6 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.seleniumhq.selenium</groupId>
@@ -61,6 +66,73 @@
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
             <version>1.18.1</version>
+        </dependency>
+        <!-- JavaFX (WebView-оболочка для десктоп-окна).
+             Все модули объявляем ЯВНО с classifier win (нативные DLL для Windows).
+             Транзитивные org.openjfx-зависимости исключаем (wildcard), потому что в их
+             POM стоит <classifier>${javafx.platform}</classifier>, который в этой сборке
+             не раскрывается (OS-профиль родительского POM org.openjfx:javafx не
+             активируется при транзитивной резолюции) — иначе Maven пытается качать
+             jar с буквальным именем "${javafx.platform}". Мы сами даём все модули. -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-base</artifactId>
+            <version>${javafx.version}</version>
+            <classifier>win</classifier>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-graphics</artifactId>
+            <version>${javafx.version}</version>
+            <classifier>win</classifier>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <version>${javafx.version}</version>
+            <classifier>win</classifier>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-media</artifactId>
+            <version>${javafx.version}</version>
+            <classifier>win</classifier>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-web</artifactId>
+            <version>${javafx.version}</version>
+            <classifier>win</classifier>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
     </dependencies>
 
@@ -92,5 +164,95 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!--
+            Профили сборки десктоп-установщика через jpackage (входит в JDK 21).
+
+              mvnw clean package -DskipTests=false               # fat-JAR (для dev)
+              mvnw package -Pdesktop -DskipTests=false           # app-image (.exe, без WiX)
+              mvnw package -Pdesktop-msi -DskipTests=false       # .msi (нужен WiX 3.x)
+
+            Оба desktop-профиля делегируют фактическую сборку в build-msi.ps1
+            (тонкий jar + app/*, jlink runtime-image с JavaFX, jpackage). Скрипт
+            вызывается с -SkipBuild, т.к. Maven уже собрал thin jar к фазе package.
+
+            Требования:
+              - JDK 21 (jpackage, jlink);
+              - JavaFX 21.0.2 win-jar в локальном m2 (уже объявлены в <dependencies>);
+              - иконка packaging/app.ico (валидный .ico; если это PNG — перегенерируется);
+              - для .msi — WiX Toolset 3.x (без него только app-image).
+
+            Параметры (переопределяются через -D):
+              jpackage.name, jpackage.vendor, jpackage.appVersion
+        -->
+
+        <!-- app-image: промежуточная папка target/dist/KP IMDB Importer/ (без WiX). -->
+        <profile>
+            <id>desktop</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>jpackage-app-image</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>powershell</executable>
+                                    <arguments>
+                                        <argument>-ExecutionPolicy</argument>
+                                        <argument>Bypass</argument>
+                                        <argument>-File</argument>
+                                        <argument>${project.basedir}/build-msi.ps1</argument>
+                                        <argument>-SkipBuild</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- msi: установщик (нужен WiX 3.x). Включает ярлыки в меню Пуск и на рабочем столе. -->
+        <profile>
+            <id>desktop-msi</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>jpackage-msi</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>powershell</executable>
+                                    <arguments>
+                                        <argument>-ExecutionPolicy</argument>
+                                        <argument>Bypass</argument>
+                                        <argument>-File</argument>
+                                        <argument>${project.basedir}/build-msi.ps1</argument>
+                                        <argument>-SkipBuild</argument>
+                                        <argument>-Msi</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>

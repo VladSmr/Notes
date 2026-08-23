@@ -31,9 +31,8 @@
 
     <form action="/notes/proset-submit" method="post">
         <label for="logDirectory">Директория с дампом kp-ratings.csv:</label>
-        <input type="text" id="logDirectory" name="logDirectory" required value="D:\">
-        <div class="hint">Путь к папке, где лежит файл kp-ratings.csv (результат этапа «Парсинг»).</div>
-        <div class="hint">Не указывайте корень диска (например C:\ или D:\) — Windows запрещает запись в корень системного диска. Укажите подпапку, например D:\notes\.</div>
+        <input type="text" id="logDirectory" name="logDirectory" required th:value="${defaultLogDir}">
+        <div class="hint">Путь к папке, где лежит файл kp-ratings.csv (результат этапа «Парсинг»). По умолчанию — рабочая папка приложения в вашем профиле (%USERPROFILE%\KP-IMDB-Importer). Можно указать свою.</div>
 
         <button type="submit">Далее: открыть браузер IMDB</button>
     </form>

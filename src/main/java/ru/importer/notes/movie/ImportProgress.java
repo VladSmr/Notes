@@ -109,9 +109,59 @@ public class ImportProgress {
         }
     }
 
+    /**
+     * Накапливает «единицы работы» и транслирует событие прогресса.
+     *
+     * <p>Семантика единиц (см. схему «N + N/20»): total задаётся как ОБЩЕЕ число единиц
+     * (для selenium — N + N/20, для api — N/20), а каждый вызов advance добавляет 1 единицу.
+     * Так фаза 1 (парсинг страниц, каждая страница = 1 единица) и фаза 2 (original titles,
+     * каждый фильм = 1 единица) используют ОДИН общий счётчик, и в сумме current достигает
+     * total ровно в конце (не переваливая за него).</p>
+     *
+     * <p>current никогда не превышает total: при total &gt; 0 лишние advance (например, после
+     * завершения всех фаз) игнорируются. При total == 0 (индетерминированная полоса) current
+     * не накапливается — фронт в этом случае игнорирует числовые значения.</p>
+     */
     public synchronized void advance(String phase, String movieName, String status) {
-        this.current++;
+        if (this.total > 0 && this.current < this.total) {
+            this.current++;
+        }
         broadcast(new ProgressEvent(phase, current, total, movieName, status, false, null, false));
+    }
+
+    /**
+     * Пересчитывает знаменатель прогресса, сохраняя уже накопленные единицы ({@link #current}).
+     *
+     * <p>Используется между фазами парсинга: знаменатель фазы 2 (original titles) зависит от
+     * фактического числа missing-фильмов, которое становится известно только ПОСЛЕ фазы 1.
+     * Чтобы current достигал total ровно в конце (инвариант схемы «детерминированной полосы»),
+     * после фазы 1 знаменатель пересчитывается под реальное число advance (см.
+     * {@code SeleniumKpRatingsProvider}).</p>
+     *
+     * <p>current никогда не превышает total: если новый знаменатель оказался меньше уже
+     * накопленного current (теоретический случай), current клампится до newTotal.</p>
+     *
+     * @param newTotal новое общее число единиц работы
+     */
+    public synchronized void resetTotal(int newTotal) {
+        if (newTotal < 0) {
+            newTotal = 0;
+        }
+        if (this.current > newTotal) {
+            this.current = newTotal;
+        }
+        this.total = newTotal;
+        broadcast(new ProgressEvent(null, current, total, null, null, false, null, false));
+    }
+
+    /** Текущее число накопленных единиц работы (для тестов и диагностики). */
+    public synchronized int getCurrent() {
+        return current;
+    }
+
+    /** Общее число единиц работы (знаменатель прогресса; 0 — индетерминированная полоса). */
+    public synchronized int getTotal() {
+        return total;
     }
 
     private void broadcast(ProgressEvent event) {

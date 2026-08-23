@@ -45,12 +45,31 @@ public class SeleniumKpRatingsProvider implements KpRatingsProvider {
         // каждой страницы, чтобы промежуточный дамп появлялся по ходу парсинга.
         List<MovieData> movies = notesImporter.getNotes(driver, userId, progress, onBatch);
 
+        // Знаменатель фазы 2 (original titles) зависит от фактического числа missing-фильмов,
+        // которое известно только после фазы 1. Пересчитываем полный знаменатель:
+        //   total = (единицы фазы 1 = число просканированных страниц = progress.getCurrent())
+        //         + (число missing-фильмов с URL, по которым фаза 2 сделает advance).
+        // Это приводит знаменатель в соответствие с реальным числом advance, чтобы current
+        // достигал total ровно в конце (инвариант детерминированной полосы). Фильмы без URL
+        // в фазе 2 пропускаются БЕЗ advance (см. KpNotesImporter.fetchOriginalTitles), поэтому
+        // в знаменатель не входят.
+        if (progress != null) {
+            long missingWithUrl = movies.stream()
+                    .filter(m -> m.getNameEn() == null || m.getNameEn().isBlank())
+                    .filter(m -> m.getKpUrl() != null || m.getKpId() != null)
+                    .count();
+            int phase1Units = progress.getCurrent(); // число просканированных страниц
+            progress.resetTotal(phase1Units + (int) missingWithUrl);
+        }
+
         long missingOriginals = movies.stream()
                 .filter(m -> m.getNameEn() == null || m.getNameEn().isBlank())
                 .count();
         if (missingOriginals > 0 && !(progress != null && progress.isAborted())) {
             log.info("Загрузка оригинальных названий со страниц фильмов: {}", missingOriginals);
-            notesImporter.fetchOriginalTitles(movies, driver, progress);
+            // onBatch передаём дальше: fetchOriginalTitles сохраняет промежуточный дамп
+            // каждые 5 фильмов и в конце фазы (в т.ч. при остановке пользователем).
+            notesImporter.fetchOriginalTitles(movies, driver, progress, onBatch);
             log.info("Оригинальные названия загружены.");
         }
         return movies;

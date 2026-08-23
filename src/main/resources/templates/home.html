@@ -5,8 +5,13 @@
     <title>Импорт оценок с Кинопоиска на IMDB</title>
     <style>
         body { font-family: sans-serif; margin: 40px; }
-        .container { max-width: 680px; margin: 0 auto; }
+        .container { max-width: 720px; margin: 0 auto; }
+        .brand { text-align: center; margin-bottom: 24px; }
+        .brand img { width: 140px; height: 140px; object-fit: contain; }
         h1 { font-size: 26px; }
+        .intro { color: #333; font-size: 15px; line-height: 1.6; }
+        .intro h2 { font-size: 20px; margin: 0 0 8px; }
+        .intro ul { margin: 8px 0; padding-left: 22px; }
         .option { display: block; border: 2px solid #ddd; border-radius: 10px; padding: 20px 24px; margin: 16px 0; text-decoration: none; color: inherit; }
         .option:hover { border-color: #007bff; background: #f0f7ff; }
         .option .title { font-size: 20px; font-weight: bold; }
@@ -17,17 +22,33 @@
 </head>
 <body>
 <div class="container">
+    <div class="brand">
+        <img th:src="@{/img/logo.png}" alt="Логотип KP → IMDB Importer">
+    </div>
+
     <h1>Импорт оценок с Кинопоиска на IMDB</h1>
-    <p>Выберите, что хотите сделать. Два этапа независимы: можно спарсить сегодня, проставить завтра, или не проставлять вовсе.</p>
+
+    <div class="intro">
+        <p>Эта программа переносит твои оценки фильмов и сериалов с Кинопоиска на IMDB.
+            Если ты много лет ставил оценки на Кинопоиске и хочешь, чтобы они появились и на IMDB —
+            это приложение сделает всё за тебя.</p>
+        <p>Всё происходит в два шага:</p>
+        <ul>
+            <li><strong>Парсинг</strong> — сбор оценок с Кинопоиска.</li>
+            <li><strong>Проставление</strong> — проставление оценок на IMDB.</li>
+        </ul>
+        <p>Шаги можно делать по отдельности: например, собрать оценки сегодня, а проставить завтра.
+            Или вообще только собрать.</p>
+    </div>
 
     <a class="option" href="/notes/main">
         <span class="title">Парсинг</span>
-        <span class="desc">Собрать оценки с Кинопоиска (selenium / API) и сохранить в kp-ratings.csv. IMDB не участвует.</span>
+        <span class="desc">Собрать твои оценки с Кинопоиска и сохранить их. IMDB на этом шаге не затрагивается.</span>
     </a>
 
     <a class="option" href="/notes/proset">
         <span class="title">Проставление</span>
-        <span class="desc">Проставить оценки из сохранённого дампа kp-ratings.csv на IMDB. Кинопоиск не участвует.</span>
+        <span class="desc">Поставить собранные оценки на IMDB. Кинопоиск на этом шаге не затрагивается.</span>
     </a>
 
     <div class="notice" th:if="${processRunning}">

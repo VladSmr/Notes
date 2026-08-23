@@ -34,6 +34,8 @@ public class KpNotesImporter {
     private static final Pattern FILM_ID_PATTERN = Pattern.compile("/(?:film|series)/(\\d+)");
     private static final int MAX_PAGES = 300;
     private static final Pattern PLAIN_YEAR = Pattern.compile("\\b(19\\d{2}|20\\d{2})\\b");
+    /** Первый четырёхзначный год в диапазоне 1900–2100 (для извлечения года из текста элемента). */
+    private static final Pattern YEAR_DIGITS = Pattern.compile("\\b(19\\d{2}|20\\d{2}|2100)\\b");
     private static final String VOTES_URL = "https://www.kinopoisk.ru/user/%d/movies/voted-watched/";
     private static final String VOTES_URL_PAGE = "https://www.kinopoisk.ru/user/%d/movies/voted-watched/?page=%d";
     private static final Pattern YEAR_IN_TEXT = Pattern.compile("\\((\\d{4})\\)");
@@ -75,8 +77,18 @@ public class KpNotesImporter {
      * Доставляет оригинальные названия для фильмов, у которых их нет: открывает
      * страницу каждого фильма и берёт span[class*="originalTitle"] под русским названием.
      * CSS-module суффикс (__nZWQK и т.п.) меняется между релизами, поэтому ищем по подстроке класса.
+     *
+     * <p>Попутно, если у фильма не проставлен год ({@code year == 0}), заполняет его со страницы
+     * фильма (см. {@link #extractYearFromCurrentPage}).</p>
+     *
+     * <p>Накопленный дамп сохраняется через {@code onBatch}: каждые 5 обработанных фильмов и
+     * обязательно в конце фазы (в т.ч. при остановке пользователем), чтобы уже собранные
+     * original titles и годы не терялись.</p>
+     *
+     * @param onBatch колбэк для промежуточного сохранения дампа (может быть null)
      */
-    public void fetchOriginalTitles(List<MovieData> movies, WebDriver driver, ImportProgress progress) {
+    public void fetchOriginalTitles(List<MovieData> movies, WebDriver driver, ImportProgress progress,
+                                    java.util.function.Consumer<List<MovieData>> onBatch) {
         List<MovieData> missing = new ArrayList<>();
         for (MovieData m : movies) {
             if (m.getNameEn() == null || m.getNameEn().isBlank()) {
@@ -92,14 +104,22 @@ public class KpNotesImporter {
 
         int done = 0;
         for (MovieData movie : missing) {
-            if (progress != null && progress.isAborted()) {
-                log.info("Остановлен пользователем: загружено оригиналов {}/{}", done, missing.size());
-                break;
+            if (progress != null) {
+                // Мягкая пауза между фильмами (безопасная точка, не посреди операции с браузером).
+                progress.waitWhilePaused();
+                if (progress.isAborted()) {
+                    log.info("Остановлен пользователем: загружено оригиналов {}/{}", done, missing.size());
+                    break;
+                }
             }
             try {
                 String url = movie.getKpUrl() != null ? movie.getKpUrl()
                         : (movie.getKpId() != null ? "https://www.kinopoisk.ru/film/" + movie.getKpId() + "/" : null);
                 if (url == null) {
+                    // Фильм без URL (нет ни kpUrl, ни kpId) пропускаем БЕЗ увеличения счётчика done
+                    // и без advance прогресса: он фактически не обработан. Семантика: счётчик done —
+                    // это «обработанные» фильмы, а не «все в списке missing». Дамп всё равно
+                    // сохранится в конце фазы (см. финальный onBatch ниже).
                     continue;
                 }
                 driver.get(url);
@@ -110,6 +130,14 @@ public class KpNotesImporter {
                 } else {
                     log.warn("Оригинал не найден [{}/{}]: '{}' ({})", done + 1, missing.size(), movie.getName(), url);
                 }
+                // Год: если не проставлен — заполняем со страницы фильма (не трогаем уже известный).
+                if (movie.getYear() == 0) {
+                    int year = extractYearFromCurrentPage(driver);
+                    if (year > 0) {
+                        movie.setYear(year);
+                        log.info("Год [{}/{}]: '{}' -> {}", done + 1, missing.size(), movie.getName(), year);
+                    }
+                }
             } catch (Exception e) {
                 log.warn("Не удалось получить оригинал [{}/{}]: '{}': {}", done + 1, missing.size(), movie.getName(), e.getMessage());
             }
@@ -117,8 +145,99 @@ public class KpNotesImporter {
             if (progress != null) {
                 progress.advance(ImportProgress.PHASE_KP, movie.getName(), "original " + done + "/" + missing.size());
             }
+            // Промежуточный дамп каждые 5 обработанных фильмов, чтобы накопленные данные
+            // (original titles + годы) сохранялись по ходу.
+            if (onBatch != null && done % 5 == 0) {
+                onBatch.accept(movies);
+            }
+        }
+        // Финальный дамп в конце фазы (в т.ч. при остановке пользователем), чтобы уже
+        // собранные original titles и годы гарантированно попали в выгрузку.
+        if (onBatch != null && done > 0) {
+            onBatch.accept(movies);
         }
         log.info("Загрузка оригинальных названий завершена");
+    }
+
+    /**
+     * Извлекает год выпуска со страницы фильма КП. Стратегии по убыванию надёжности:
+     * <ol>
+     *   <li>элемент с годом рядом с названием ({@code span[class*="year"]},
+     *       {@code [class*="Year"]}, {@code .film-date} и т.п.);</li>
+     *   <li>{@code <meta property="og:title">} вида «Название (2021)»;</li>
+     *   <li>{@code <title>} вида «Название (2021) — смотреть онлайн»;</li>
+     *   <li>первый год из текста страницы ({@link #PLAIN_YEAR}) — крайний случай.</li>
+     * </ol>
+     *
+     * @return год или 0, если определить не удалось
+     */
+    private int extractYearFromCurrentPage(WebDriver driver) {
+        try {
+            Document doc = Jsoup.parse(driver.getPageSource());
+
+            Element yearEl = doc.selectFirst("span[class*=\"year\"], [class*=\"Year\"], "
+                    + ".film-date, [class*=\"film-date\"], [class*=\"filmDate\"]");
+            if (yearEl != null) {
+                int y = parseYearDigits(yearEl.text());
+                if (y > 0) {
+                    return y;
+                }
+            }
+
+            Element ogTitle = doc.selectFirst("meta[property=\"og:title\"]");
+            if (ogTitle != null) {
+                int y = extractYear(ogTitle.attr("content"));
+                if (y > 0) {
+                    return y;
+                }
+            }
+
+            Element title = doc.selectFirst("title");
+            if (title != null) {
+                int y = extractYear(title.text());
+                if (y > 0) {
+                    return y;
+                }
+            }
+
+            // Крайний fallback: первый год из всего текста страницы. РИСК: это может быть год
+            // каста, даты рождения актёров или другого фильма (ссылки на похожие). Сужение области
+            // поиска (например, «рядом с заголовком») ненадёжно и может сломать определение года,
+            // поэтому оставляем как есть, но диапазон 1900–2100 в PLAIN_YEAR отсекает явный мусор
+            // (годы рождения до 1900 и будущие даты). Приемлемо только как последняя стратегия.
+            Matcher m = PLAIN_YEAR.matcher(doc.text());
+            if (m.find()) {
+                return Integer.parseInt(m.group(1));
+            }
+        } catch (Exception e) {
+            log.warn("Не удалось извлечь год со страницы фильма: {}", e.getMessage());
+        }
+        return 0;
+    }
+
+    /**
+     * Вытаскивает первый четырёхзначный год из текста элемента, либо 0.
+     *
+     * <p>Извлекаем ПЕРВЫЙ год в диапазоне 1900–2100 через regex, а не склейку всех цифр:
+     * элемент может содержать год И длительность («2021 · 2 ч 30 мин»), и наивная склейка
+     * дала бы абсурдное «2021230». Диапазон дополнительно отсекает мусор (годы каста,
+     * даты рождения и т.п.). package-private для тестов.</p>
+     */
+    int parseYearDigits(String text) {
+        if (text == null || text.isBlank()) {
+            return 0;
+        }
+        Matcher m = YEAR_DIGITS.matcher(text);
+        if (m.find()) {
+            try {
+                int y = Integer.parseInt(m.group(1));
+                if (y >= 1900 && y <= 2100) {
+                    return y;
+                }
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return 0;
     }
 
     /**
@@ -207,9 +326,14 @@ public class KpNotesImporter {
         log.info("Начало сканирования оценок КП, пользователь {}, страницы с 1", userId);
 
         for (int page = 1; page <= MAX_PAGES; page++) {
-            if (progress != null && progress.isAborted()) {
-                log.info("Импорт остановлен пользователем на странице {}", page);
-                break;
+            if (progress != null) {
+                // Мягкая пауза: блокируемся в безопасной точке между страницами, пока
+                // пользователь не нажмёт «Продолжить», затем проверяем, не остановлен ли процесс.
+                progress.waitWhilePaused();
+                if (progress.isAborted()) {
+                    log.info("Импорт остановлен пользователем на странице {}", page);
+                    break;
+                }
             }
 
             String url = String.format(VOTES_URL_PAGE, userId, page);
@@ -241,6 +365,9 @@ public class KpNotesImporter {
             }
 
             if (progress != null) {
+                // Фаза 1 (парсинг): каждая страница = 1 единица работы (по схеме «N + N/20»).
+                // Знаменатель total уже задан как N + N/20 (selenium) или N/20 (api), поэтому
+                // здесь добавляем ровно 1 единицу за страницу, а не по числу фильмов.
                 progress.advance(ImportProgress.PHASE_KP, "Страница " + page, "kp");
             }
 

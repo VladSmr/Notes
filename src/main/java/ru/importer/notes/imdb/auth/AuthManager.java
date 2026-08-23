@@ -1,6 +1,5 @@
 package ru.importer.notes.imdb.auth;
 
-import java.nio.file.Paths;
 import java.util.List;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
@@ -10,6 +9,7 @@ import org.openqa.selenium.chrome.ChromeOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import ru.importer.notes.util.WorkingDir;
 
 @Service
 public class AuthManager {
@@ -58,7 +58,9 @@ public class AuthManager {
         options.setExperimentalOption("excludeSwitches", new String[]{"enable-automation"});
         options.setExperimentalOption("useAutomationExtension", false);
 
-        String userDataDir = Paths.get("chrome-profile").toAbsolutePath().toString();
+        // Храним профиль Chrome в рабочей директории приложения (%USERPROFILE%\KP-IMDB-Importer),
+        // а не рядом с exe — в Program Files писать нельзя.
+        String userDataDir = WorkingDir.chromeProfileDir().toString();
         options.addArguments("--user-data-dir=" + userDataDir);
 
         driver = new ChromeDriver(options);

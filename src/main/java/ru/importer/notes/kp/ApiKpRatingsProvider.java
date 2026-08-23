@@ -79,9 +79,13 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
         int totalPages = Integer.MAX_VALUE;
 
         while (page <= totalPages) {
-            if (progress != null && progress.isAborted()) {
-                log.info("Импорт остановлен пользователем на странице {}", page);
-                break;
+            if (progress != null) {
+                // Мягкая пауза между страницами, затем проверка остановки.
+                progress.waitWhilePaused();
+                if (progress.isAborted()) {
+                    log.info("Импорт остановлен пользователем на странице {}", page);
+                    break;
+                }
             }
             JsonNode root = fetchPage(userId, apiToken, page);
             totalPages = root.path("totalPages").asInt(totalPages);
@@ -215,7 +219,7 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
         if (nameOriginal == null && nameEn == null) {
             boolean cis = isCis(item.path("countries"));
             if (!cis) {
-                log.warn("Внимание: у фильма '{}' ({}, kpId={}) нет ни оригинального, ни английского названия — страна не СНГ, это ошибка данных",
+                log.warn("Внимание: у фильма '{}' ({}, kpId={}) нет ни оригинального, ни английского названия",
                         name, movie.getYear(), kpId);
             }
         }

@@ -48,6 +48,9 @@ public class Processor {
     private static final String STAGE_PARSING = "parsing";
     private static final String STAGE_PROSET = "proset";
 
+    /** Фильмов на странице оценок КП (совпадает с {@code KpNotesImporter.PER_PAGE}). */
+    private static final int KP_PER_PAGE = 20;
+
     private final AuthManager authManager;
     private final LogFileService logFile;
     private final ImdbNotesExporter notesExporter;
@@ -178,8 +181,11 @@ public class Processor {
             synchronized (browserLock) {
                 if (authManager.getDriver() == null) {
                     authManager.openBrowserAndWaitLogin();
-                    realTotalRatings = provider.fetchTotalRatings(inputData.getKpUserId(), inputData.getApiToken());
                 }
+                // Счётчик оценок читаем ВСЕГДА (даже если браузер уже был открыт ранее —
+                // навигируемся на страницу оценок КП и читаем total). N должен быть известен
+                // для selenium всегда, чтобы строить детерминированную полосу по схеме «N + N/20».
+                realTotalRatings = provider.fetchTotalRatings(inputData.getKpUserId(), inputData.getApiToken());
             }
         }
 
@@ -204,7 +210,7 @@ public class Processor {
      * надёжно в {@code finally} фонового потока.
      */
     public String startParsing(Long kpUserId, String logDirectory, String parserType, String apiToken,
-                               Model model) {
+                               Integer totalRatings, Model model) {
         String type = normalizeParserType(parserType);
         if (type == null || PARSER_SAVED.equals(type)) {
             model.addAttribute(ERROR_MESSAGE, "Invalid parser type");
@@ -245,14 +251,32 @@ public class Processor {
         long userId = kpUserId;
         log.info("Запускаю парсинг для пользователя КП {}, способ {}, лог-директория: {}",
                 kpUserId, provider.getKey(), logDirectory);
-        new Thread(() -> runParsingAsync(userId, provider, apiToken), "parsing-thread").start();
+        new Thread(() -> runParsingAsync(userId, provider, apiToken, totalRatings), "parsing-thread").start();
         return "importing-parsing";
     }
 
-    private void runParsingAsync(long kpUserId, KpRatingsProvider provider, String apiToken) {
+    private void runParsingAsync(long kpUserId, KpRatingsProvider provider, String apiToken, Integer totalRatings) {
         List<MovieData> movies = null;
         try {
-            progress.init(0);
+            // Единая полоса прогресса (детерминированная): 1 страница парсинга (20 фильмов) =
+            // 1 единица; 1 missing-фильм в фазе original titles = 1 единица.
+            //   - api:      есть только фаза 1 (парсинг постранично) = ceil(N/20) единиц.
+            //   - selenium: фаза 1 = ceil(N/20) единиц, фаза 2 (original titles) = число
+            //               missing-фильмов с URL. Число missing становится известно только
+            //               ПОСЛЕ фазы 1, поэтому здесь задаём лишь знаменатель фазы 1
+            //               (ceil(N/20)), а после фазы 1 провайдер пересчитывает полный
+            //               знаменатель через ImportProgress.resetTotal (см. SeleniumKpRatingsProvider),
+            //               чтобы current достигал total ровно в конце.
+            // Если N неизвестно (null/0) — totalUnits = 0, и фронт показывает индетерминированную
+            // полосу (для selenium после фазы 1 провайдер всё равно сделает её детерминированной).
+            int totalUnits = 0;
+            if (totalRatings != null && totalRatings > 0) {
+                int n = totalRatings;
+                // ceil(N/20): число страниц оценок КП (по KP_PER_PAGE фильмов на странице).
+                int pagesCeil = (n + KP_PER_PAGE - 1) / KP_PER_PAGE;
+                totalUnits = pagesCeil;
+            }
+            progress.init(totalUnits);
             log.info("=== Парсинг начат ===");
             log.info("Пользователь КП: {}, способ: {}", kpUserId, provider.getKey());
 
@@ -640,7 +664,7 @@ public class Processor {
             }
             if (nameOriginal == null || nameOriginal.isBlank()) {
                 if (nameEn == null || nameEn.isBlank()) {
-                    log.warn("Внимание: у фильма '{}' ({} г., kpId={}) нет ни оригинального, ни английского названия — если страна не СНГ, это ошибка парсинга",
+                    log.warn("Внимание: у фильма '{}' ({} г., kpId={}) нет ни оригинального, ни английского названия",
                             name, year, m.getKpId());
                 } else {
                     log.warn("Внимание: у фильма '{}' ({} г., kpId={}) нет оригинального названия — если страна не СНГ, это ошибка парсинга",
