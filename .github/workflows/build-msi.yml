@@ -67,39 +67,13 @@ jobs:
           path: ${{ steps.msi.outputs.path }}
           if-no-files-found: error
 
-      # ---- Variant B: publish to GitHub Release ONLY if the pom version differs
-      # ---- from the latest published release tag. Otherwise leave Releases untouched.
-      - name: Decide whether to publish a new Release
-        id: decide
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $current = "${{ steps.version.outputs.version }}"
-
-          $latest = $null
-          $releaseList = gh release list --limit 1 --json tagName 2>$null
-          if ($LASTEXITCODE -eq 0 -and $releaseList) {
-            $latest = ($releaseList | ConvertFrom-Json)[0].tagName
-          }
-
-          Write-Host "Current pom version : $current"
-          Write-Host "Latest release tag : $($latest ?? '(none)')"
-
-          # First release ever -> publish. Otherwise publish only if versions differ.
-          $shouldPublish = $false
-          if (-not $latest) {
-            $shouldPublish = $true
-          } elseif ($latest -ne $current) {
-            $shouldPublish = $true
-          }
-
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "publish=$shouldPublish"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "latest=$latest"
-          Write-Host "should_publish: $shouldPublish"
-
-      - name: Create or update GitHub Release
-        if: steps.decide.outputs.publish == 'true'
+      # ---- Publish: ensure the .msi is attached to the GitHub Release whose tag
+      # ---- equals the current pom version. If such a Release already exists
+      # ---- (even an empty/manual one), just (re-)upload the asset with --clobber;
+      # ---- otherwise create the Release first. This keeps Variant B's essence
+      # ---- (no extra Releases when the version is unchanged) while guaranteeing
+      # ---- the .msi always lands in the Release for the current version.
+      - name: Ensure .msi is uploaded to GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -107,13 +81,15 @@ jobs:
           $tag = "${{ steps.version.outputs.version }}"
           $msiPath = "${{ steps.msi.outputs.path }}"
 
-          # Re-check whether a release with this tag already exists (idempotency).
+          # Does a Release with this tag already exist (even an empty one)?
           $existing = gh release view $tag --json tagName 2>$null
           if ($LASTEXITCODE -eq 0 -and $existing) {
-            Write-Host "Release '$tag' already exists - updating assets."
+            Write-Host "Release '$tag' already exists - uploading/overwriting .msi asset."
             gh release upload $tag $msiPath --clobber
           } else {
-            Write-Host "Creating release '$tag'."
+            Write-Host "No Release for '$tag' yet - creating it and uploading .msi."
+            # gh release create works even if the git tag already exists:
+            # it attaches the Release to the existing tag.
             gh release create $tag $msiPath `
               --title "KP IMDB Importer $tag" `
               --notes "Automated build from GitHub Actions. Download the .msi installer below."
