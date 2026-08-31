@@ -34,6 +34,9 @@ import ru.importer.notes.util.ErrorFormatter;
  * фонового потока. Общий прогресс и результат этапов хранятся в {@link ImportProgress}
  * (с пометкой этапа-производителя {@code completedStage}). Подготовка браузера между этапами
  * сериализуется через {@link #browserLock}, т.к. {@code AuthManager} держит один {@code WebDriver}.
+ * По завершении этапа (успех/ошибка/остановка пользователем — в {@code finally} фонового потока)
+ * WebDriver закрывается через {@link AuthManager#closeDriver()}, чтобы профиль Chrome
+ * не оставался заблокированным.
  */
 @Service
 public class Processor {
@@ -325,6 +328,11 @@ public class Processor {
             errorResult.setErrorDetails(ErrorFormatter.format(e));
             progress.complete(STAGE_PARSING, errorResult);
         } finally {
+            // Этап завершён (успех, ошибка или остановка пользователем) — закрываем браузер,
+            // чтобы профиль Chrome не оставался заблокированным до следующего запуска.
+            synchronized (browserLock) {
+                authManager.closeDriver();
+            }
             coordinator.finish();
         }
     }
@@ -451,6 +459,11 @@ public class Processor {
             errorResult.setErrorDetails(ErrorFormatter.format(e));
             progress.complete(STAGE_PROSET, errorResult);
         } finally {
+            // Этап завершён (успех, ошибка или остановка пользователем) — закрываем браузер,
+            // чтобы профиль Chrome не оставался заблокированным до следующего запуска.
+            synchronized (browserLock) {
+                authManager.closeDriver();
+            }
             coordinator.finish();
         }
     }

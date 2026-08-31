@@ -156,7 +156,15 @@ public class DesktopLauncher extends Application {
         }
     }
 
-    /** Корректно завершает Spring-контекст (Tomcat, фоновые потоки). */
+    /**
+     * Корректно завершает Spring-контекст (Tomcat, фоновые потоки).
+     *
+     * <p>Цепочка разблокировки профиля Chrome при закрытии окна: {@code SpringApplication.exit()}
+     * закрывает Spring-контекст → у {@link ru.importer.notes.imdb.auth.AuthManager} срабатывает
+     * {@code @PreDestroy shutdown()} → выполняется последовательность
+     * {@code driver.quit()} → поиск висящего Chrome с нашим профилем → taskkill.
+     * Дополнительно вызывать её здесь не нужно (иначе — двойное выполнение).</p>
+     */
     private void shutdownSpring() {
         ConfigurableApplicationContext ctx = this.springContext;
         if (ctx != null) {
