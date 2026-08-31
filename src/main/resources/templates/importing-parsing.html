@@ -84,11 +84,9 @@
 
         if (data.finished) {
             source.close();
-            if (data.result && data.result.errorMessage) {
-                window.location.href = '/notes/error?message=' + encodeURIComponent(data.result.errorMessage);
-            } else {
-                window.location.href = '/notes/parsing-result';
-            }
+            // /notes/parsing-result сам различит ошибку и успех (по result.errorMessage)
+            // и передаст на страницу полный лог ошибки (errorDetails).
+            window.location.href = '/notes/parsing-result';
             return;
         }
 

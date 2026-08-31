@@ -15,6 +15,7 @@ import ru.importer.notes.imdb.ImdbNotesExporter;
 import ru.importer.notes.imdb.auth.AuthManager;
 import ru.importer.notes.kp.KpRatingsProvider;
 import ru.importer.notes.log.LogFileService;
+import ru.importer.notes.util.ErrorFormatter;
 
 /**
  * Оркестратор двух независимых этапов работы приложения:
@@ -321,6 +322,7 @@ public class Processor {
             }
             AppResult errorResult = new AppResult();
             errorResult.setErrorMessage("Parsing failed: " + e.getMessage());
+            errorResult.setErrorDetails(ErrorFormatter.format(e));
             progress.complete(STAGE_PARSING, errorResult);
         } finally {
             coordinator.finish();
@@ -446,6 +448,7 @@ public class Processor {
             }
             AppResult errorResult = new AppResult();
             errorResult.setErrorMessage("Prosetting failed: " + e.getMessage());
+            errorResult.setErrorDetails(ErrorFormatter.format(e));
             progress.complete(STAGE_PROSET, errorResult);
         } finally {
             coordinator.finish();

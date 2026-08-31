@@ -8,6 +8,22 @@
         .container { max-width: 500px; margin: 0 auto; text-align: center; }
         .error-box { background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 8px; padding: 24px; margin: 16px 0; }
         .error-message { color: #721c24; font-size: 18px; }
+        .error-details { margin: 16px 0 0 0; text-align: left; }
+        .error-details summary { color: #721c24; cursor: pointer; font-size: 14px; user-select: none; }
+        .error-details pre {
+            max-height: 320px;
+            overflow: auto;
+            margin: 8px 0 0 0;
+            padding: 10px 12px;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 12px;
+            color: #333;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
         a { display: inline-block; margin-top: 16px; }
     </style>
 </head>
@@ -15,7 +31,15 @@
 <div class="container">
     <h1>Ошибка</h1>
     <div class="error-box">
-        <p class="error-message" th:text="${errorMessage}">Что-то пошло не так</p>
+        <!-- Короткое сообщение: наш контроллер кладёт errorMessage; если страница отрендерена
+             стандартным механизмом Spring Boot /error — там message/error. -->
+        <p class="error-message" th:text="${errorMessage} ?: (${message} ?: (${error} ?: 'Что-то пошло не так'))">Что-то пошло не так</p>
+        <!-- Полный лог ошибки: errorDetails кладёт наш error-контроллер,
+             trace — стандартный механизм Spring Boot (server.error.include-stacktrace=always). -->
+        <details class="error-details" open th:if="${errorDetails} or ${trace}">
+            <summary>Полный лог ошибки</summary>
+            <pre th:text="${errorDetails} ?: ${trace}"></pre>
+        </details>
     </div>
     <a href="/notes/">На главную</a>
 </div>

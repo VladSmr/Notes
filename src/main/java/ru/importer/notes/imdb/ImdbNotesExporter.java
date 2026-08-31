@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import ru.importer.notes.dto.MovieData;
 import ru.importer.notes.dto.MovieData.MovieStatus;
 import ru.importer.notes.movie.ImportProgress;
+import ru.importer.notes.util.ErrorFormatter;
 
 @Service
 public class ImdbNotesExporter {
@@ -108,6 +109,7 @@ public class ImdbNotesExporter {
                     String fullMsg = e.getMessage() != null ? e.getMessage() : e.toString();
                     String msg = truncateError(fullMsg);
                     movie.setErrorMessage(msg);
+                    movie.setErrorDetails(ErrorFormatter.format(e));
 
                     String key = normalizeError(fullMsg);
                     String firstRef = seenErrors.get(key);
@@ -115,7 +117,9 @@ public class ImdbNotesExporter {
                         log.info("Фильм {}/{}: повторная ошибка, впервые у {}: {}", i + 1, movies.size(), firstRef, msg);
                     } else {
                         seenErrors.put(key, "фильма №" + (i + 1) + " («" + movie.getName() + "»)");
-                        log.error("Фильм {}/{}: ошибка при обработке '{}': {}", i + 1, movies.size(), movie.getName(), msg);
+                        // Последний аргумент-исключение: SLF4J печатает ПОЛНЫЙ stack trace в лог,
+                        // а не только обрезанное сообщение.
+                        log.error("Фильм {}/{}: ошибка при обработке '{}': {}", i + 1, movies.size(), movie.getName(), msg, e);
                     }
                 }
             }

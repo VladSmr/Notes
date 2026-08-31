@@ -1,5 +1,8 @@
 package ru.importer.notes.web;
 
+import jakarta.servlet.RequestDispatcher;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.boot.web.servlet.error.ErrorController;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,11 +17,12 @@ import ru.importer.notes.log.LogBuffer;
 import ru.importer.notes.movie.ImportProgress;
 import ru.importer.notes.movie.ProcessCoordinator;
 import ru.importer.notes.movie.Processor;
+import ru.importer.notes.util.ErrorFormatter;
 import ru.importer.notes.util.WorkingDir;
 
 @Controller
 @RequestMapping("/")
-public class MainController {
+public class MainController implements ErrorController {
 
     private final Processor processor;
     private final ImportProgress progress;
@@ -108,6 +112,7 @@ public class MainController {
         }
         if (result.getErrorMessage() != null) {
             model.addAttribute("errorMessage", result.getErrorMessage());
+            model.addAttribute("errorDetails", result.getErrorDetails());
             return "error";
         }
         model.addAttribute("result", result);
@@ -140,16 +145,51 @@ public class MainController {
         }
         if (result.getErrorMessage() != null) {
             model.addAttribute("errorMessage", result.getErrorMessage());
+            model.addAttribute("errorDetails", result.getErrorDetails());
             return "error";
         }
         model.addAttribute("result", result);
         return "success";
     }
 
-    /** Страница ошибки для фоновых сбоев (редирект со страниц прогресса по ?message=...). */
-    @GetMapping("/error")
-    public String error(@RequestParam(required = false) String message, Model model) {
-        model.addAttribute("errorMessage", message != null && !message.isBlank() ? message : "Что-то пошло не так");
+    /**
+     * Страница ошибки. Обрабатывает два сценария:
+     * <ol>
+     *   <li>редирект со страниц прогресса: {@code /notes/error?message=...};</li>
+     *   <li>ERROR-диспатч контейнера (необработанное исключение в любом контроллере/фильтре,
+     *       {@code sendError} и т.п.). Класс реализует {@link ErrorController}, поэтому
+     *       стандартный {@code BasicErrorController} Spring Boot не создаётся и ERROR-диспатч
+     *       приходит сюда: исключение достаётся из request-атрибута
+     *       {@code jakarta.servlet.error.exception} и попадает в модель как
+     *       {@code errorDetails} (полный лог через {@link ErrorFormatter#format}).
+     *       Без этого шаблон error.html рендерился с атрибутами Spring Boot
+     *       (status/error/...), а не с нашими errorMessage/errorDetails — красный alert
+     *       оставался пустым.</li>
+     * </ol>
+     * Маппинг без ограничения HTTP-метода: ERROR-диспатч сохраняет метод исходного
+     * запроса (упавший POST сюда тоже должен дойти).
+     */
+    @RequestMapping("/error")
+    public String error(@RequestParam(required = false) String message,
+                        HttpServletRequest request, Model model) {
+        Throwable exception = (Throwable) request.getAttribute(RequestDispatcher.ERROR_EXCEPTION);
+        Object statusCode = request.getAttribute(RequestDispatcher.ERROR_STATUS_CODE);
+        if (exception != null) {
+            // Необработанное исключение: короткое сообщение (или класс, если message == null)
+            // в alert, полный лог (класс + сообщение + stack trace + cause) — ниже в <pre>.
+            String shortMessage = exception.getMessage();
+            if (shortMessage == null || shortMessage.isBlank()) {
+                shortMessage = exception.getClass().getName();
+            }
+            model.addAttribute("errorMessage", shortMessage);
+            model.addAttribute("errorDetails", ErrorFormatter.format(exception));
+        } else if (message != null && !message.isBlank()) {
+            model.addAttribute("errorMessage", message);
+        } else if (statusCode != null) {
+            model.addAttribute("errorMessage", "Ошибка (HTTP " + statusCode + ")");
+        } else {
+            model.addAttribute("errorMessage", "Что-то пошло не так");
+        }
         return "error";
     }
 

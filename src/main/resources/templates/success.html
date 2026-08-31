@@ -90,6 +90,30 @@
             color: #dc3545;
         }
 
+        /* Раскрывающийся блок с полным текстом исключения (stack trace) в ячейке «Ошибка». */
+        .error-details summary {
+            color: #721c24;
+            cursor: pointer;
+            font-size: 12px;
+            user-select: none;
+        }
+
+        .error-details pre {
+            max-height: 300px;
+            overflow: auto;
+            margin: 6px 0 0 0;
+            padding: 8px 10px;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 11px;
+            color: #333;
+            white-space: pre-wrap;
+            word-break: break-all;
+            text-align: left;
+        }
+
         h2 {
             margin-top: 32px;
         }
@@ -157,7 +181,13 @@
             <td th:text="${movie.imdbRating}">8</td>
             <td th:text="${movie.imdbId}">tt123</td>
             <td th:text="${movie.status}" th:class="'status-' + ${movie.status}">RATED</td>
-            <td th:text="${movie.errorMessage}"></td>
+            <td>
+                <span th:text="${movie.errorMessage}"></span>
+                <details class="error-details" th:if="${movie.errorDetails}">
+                    <summary>Полный лог ошибки</summary>
+                    <pre th:text="${movie.errorDetails}"></pre>
+                </details>
+            </td>
         </tr>
         </tbody>
     </table>

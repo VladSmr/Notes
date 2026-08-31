@@ -17,6 +17,7 @@ public class MovieData {
     private String imdbId;
     private Integer imdbRating;
     private String errorMessage;
+    private String errorDetails;
     private MovieStatus status = MovieStatus.PENDING;
 
     /** Статус обработки фильма на этапе парсинга/проставления. */

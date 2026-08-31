@@ -8,13 +8,14 @@ import lombok.Setter;
 @Setter
 public class AppResult {
 
-    private int totalMovies;
-    private int rated;
-    private int notFound;
-    private int skippedSame;
-    private int skippedDifferent;
+    private String errorDetails;
+    private String errorMessage;
     private int errors;
     private List<MovieData> movies;
-    private String errorMessage;
+    private int notFound;
+    private int rated;
+    private int skippedDifferent;
+    private int skippedSame;
+    private int totalMovies;
 
 }
