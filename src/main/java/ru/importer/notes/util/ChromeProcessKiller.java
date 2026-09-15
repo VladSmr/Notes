@@ -7,32 +7,21 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * Принудительно завершает «висящие» процессы chrome.exe, удерживающие НАШ профиль
- * Chrome, после жёсткого падения приложения — когда {@code driver.quit()} не успел
- * выполниться и профиль остался заблокированным.
- *
- * <p><b>Алгоритм:</b> через {@link ProcessHandle} перечисляются все процессы; отбираются
- * только {@code chrome.exe}, в командной строке которых встречается путь к нашему
- * {@code chrome-profile} (аргумент {@code --user-data-dir=...}); каждый найденный PID
- * завершается через {@code taskkill /F /PID <pid>}.</p>
- *
- * <p><b>Безопасность:</b> личный Chrome пользователя не трогается никогда — у него в
- * командной строке нет пути к нашему профилю. Убивается не «все chrome.exe», а только
- * процессы с точным совпадением пути (без учёта регистра, с проверкой границы пути,
- * чтобы {@code chrome-profile2} не совпал с {@code chrome-profile}).</p>
- *
- * <p>Метод устойчив к ошибкам: процесс уже завершён, нет прав, taskkill недоступен —
- * все ситуации логируются, но исключение наружу не пробрасывается.</p>
+ * Завершает «висящие» chrome.exe, удерживающие профиль приложения, после жёсткого
+ * падения (когда {@code driver.quit()} не успел выполниться). Через {@link ProcessHandle}
+ * отбираются chrome.exe с путём к нашему {@code chrome-profile} в командной строке и
+ * убиваются через {@code taskkill /F /PID}. Личный Chrome пользователя не трогается
+ * никогда (нет пути к нашему профилю; сравнение с проверкой границы пути, чтобы
+ * {@code chrome-profile2} не совпал с {@code chrome-profile}). Ошибки (нет прав,
+ * процесс уже завершён) логируются, но не пробрасываются.
  */
+@Slf4j
 @Component
 public class ChromeProcessKiller {
-
-    private static final Logger log = LoggerFactory.getLogger(ChromeProcessKiller.class);
 
     /** Признак исполняемого файла Chrome в команде/командной строке процесса. */
     private static final String CHROME_EXECUTABLE_MARKER = "chrome.exe";
@@ -51,11 +40,10 @@ public class ChromeProcessKiller {
     }
 
     /**
-     * Находит и принудительно завершает висящие процессы chrome.exe, чья командная
-     * строка содержит {@code profileDir}. Личные Chrome-процессы (с другими профилями)
-     * не затрагиваются.
+     * Завершает висящие chrome.exe, чья командная строка содержит {@code profileDir};
+     * личные Chrome-процессы не затрагиваются.
      *
-     * @param profileDir путь к профилю приложения (может содержать пробелы/спецсимволы)
+     * @param profileDir путь к профилю приложения
      * @return число принудительно завершённых процессов
      */
     public int killStaleChromeProcesses(Path profileDir) {
@@ -97,13 +85,9 @@ public class ChromeProcessKiller {
     }
 
     /**
-     * Перечисляет процессы chrome.exe: PID + полная командная строка.
-     *
-     * <p>Package-private: точка расширения для тестов (реальный перебор процессов в
-     * unit-тестах не выполняется). Исполняет {@link ProcessHandle#allProcesses()} — без
-     * внешних {@code wmic}/{@code tasklist}, которые недоступны/удалены в части версий
-     * Windows. Сбой чтения информации об отдельном процессе (процесс завершился между
-     * перечислением и чтением, нет доступа) не прерывает перебор остальных.</p>
+     * Перечисляет процессы chrome.exe (PID + командная строка) через
+     * {@link ProcessHandle#allProcesses()} — без {@code wmic}/{@code tasklist},
+     * недоступных в части версий Windows. Сбой чтения одного процесса перебор не прерывает.
      */
     List<ChromeProcess> findChromeProcesses() {
         List<ChromeProcess> result = new ArrayList<>();
@@ -132,11 +116,8 @@ public class ChromeProcessKiller {
     }
 
     /**
-     * Принудительно завершает процесс: {@code taskkill /F /PID <pid>}.
-     *
-     * <p>Package-private: в тестах мокается, реальный taskkill не запускается. Любой
-     * сбой (процесс уже завершён, нет прав, taskkill не найден, таймаут) логируется и
-     * возвращает {@code false} — исключение наружу не пробрасывается.</p>
+     * {@code taskkill /F /PID <pid>}; любой сбой логируется и возвращает {@code false},
+     * исключение наружу не пробрасывается.
      *
      * @return {@code true}, если процесс завершён (код выхода taskkill = 0)
      */
@@ -178,11 +159,9 @@ public class ChromeProcessKiller {
     }
 
     /**
-     * Проверяет, что командная строка процесса содержит путь НАШЕГО профиля.
-     *
-     * <p>Сравнение без учёта регистра (Windows) и с проверкой «границы» пути: после
-     * совпадения должен идти конец строки, пробел или кавычка — иначе
-     * {@code ...\chrome-profile2} ошибочно совпал бы с {@code ...\chrome-profile}.</p>
+     * Командная строка процесса содержит путь НАШЕГО профиля: без учёта регистра и с
+     * проверкой «границы» пути (после совпадения — конец строки, пробел или кавычка),
+     * чтобы {@code ...\chrome-profile2} не совпал с {@code ...\chrome-profile}.
      *
      * @param commandLine   полная командная строка процесса (может быть null)
      * @param profileNeedle нормализованный путь профиля ({@link #normalize(String)})
@@ -208,11 +187,7 @@ public class ChromeProcessKiller {
         return false;
     }
 
-    /**
-     * Нормализация пути/строки для сравнения: нижний регистр (Windows не различает
-     * регистр) и прямые слэши → обратные (Chrome в командной строке может передавать
-     * путь в любом виде).
-     */
+    /** Нормализация для сравнения: нижний регистр (Windows) и прямые слэши → обратные. */
     static String normalize(String value) {
         if (value == null) {
             return "";

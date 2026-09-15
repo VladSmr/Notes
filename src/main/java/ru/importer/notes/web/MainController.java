@@ -153,21 +153,10 @@ public class MainController implements ErrorController {
     }
 
     /**
-     * Страница ошибки. Обрабатывает два сценария:
-     * <ol>
-     *   <li>редирект со страниц прогресса: {@code /notes/error?message=...};</li>
-     *   <li>ERROR-диспатч контейнера (необработанное исключение в любом контроллере/фильтре,
-     *       {@code sendError} и т.п.). Класс реализует {@link ErrorController}, поэтому
-     *       стандартный {@code BasicErrorController} Spring Boot не создаётся и ERROR-диспатч
-     *       приходит сюда: исключение достаётся из request-атрибута
-     *       {@code jakarta.servlet.error.exception} и попадает в модель как
-     *       {@code errorDetails} (полный лог через {@link ErrorFormatter#format}).
-     *       Без этого шаблон error.html рендерился с атрибутами Spring Boot
-     *       (status/error/...), а не с нашими errorMessage/errorDetails — красный alert
-     *       оставался пустым.</li>
-     * </ol>
-     * Маппинг без ограничения HTTP-метода: ERROR-диспатч сохраняет метод исходного
-     * запроса (упавший POST сюда тоже должен дойти).
+     * Страница ошибки: GET с параметром {@code message} ({@code /notes/error?message=...}) или
+     * ERROR-диспатч контейнера (класс реализует {@link ErrorController}, поэтому
+     * исключение достаётся из request-атрибута и попадает в модель как errorDetails).
+     * Маппинг без ограничения HTTP-метода: ERROR-диспатч сохраняет метод исходного запроса.
      */
     @RequestMapping("/error")
     public String error(@RequestParam(required = false) String message,
@@ -175,8 +164,7 @@ public class MainController implements ErrorController {
         Throwable exception = (Throwable) request.getAttribute(RequestDispatcher.ERROR_EXCEPTION);
         Object statusCode = request.getAttribute(RequestDispatcher.ERROR_STATUS_CODE);
         if (exception != null) {
-            // Необработанное исключение: короткое сообщение (или класс, если message == null)
-            // в alert, полный лог (класс + сообщение + stack trace + cause) — ниже в <pre>.
+            // Короткое сообщение в alert, полный лог — ниже в <pre>.
             String shortMessage = exception.getMessage();
             if (shortMessage == null || shortMessage.isBlank()) {
                 shortMessage = exception.getClass().getName();
@@ -227,11 +215,7 @@ public class MainController implements ErrorController {
         return "resumed";
     }
 
-    /**
-     * Смена директории дампа во время паузы «нужен новый путь» (нет прав на запись /
-     * директория недоступна). Применяет новый путь и будит фоновый поток, который
-     * перезапишет накопленный дамп в новый путь.
-     */
+    /** Смена директории дампа во время паузы «нужен новый путь»; будит фоновый поток. */
     @PostMapping("/change-log-dir")
     @ResponseBody
     public String changeLogDir(@RequestParam String logDirectory) {

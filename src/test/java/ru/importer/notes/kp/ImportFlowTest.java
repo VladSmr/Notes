@@ -18,7 +18,7 @@ class ImportFlowTest {
     @TempDir
     Path tempDir;
 
-    private final KpNotesImporter importer = new KpNotesImporter();
+    private final KpRatingsPageParser parser = new KpRatingsPageParser();
     private final LogFileService logFile = new LogFileService();
 
     @BeforeEach
@@ -43,7 +43,7 @@ class ImportFlowTest {
 
         var items = Jsoup.parse(pageHtml).select("div.item");
         for (var el : items) {
-            MovieData movie = importer.parseItem(el, null);
+            MovieData movie = parser.parseItem(el, null);
             assertNotNull(movie);
         }
 

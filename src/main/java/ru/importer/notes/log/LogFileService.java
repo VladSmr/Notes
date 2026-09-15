@@ -25,10 +25,8 @@ public class LogFileService {
     }
 
     /**
-     * Сохраняет результаты обработки фильмов в CSV-файл (разделитель `;`,
-     * BOM для корректного открытия в Excel в любом регионе).
-     * Запись атомарная: сначала во временный файл, затем rename поверх старого —
-     * при сбое старый файл остаётся целым, ничего не усекается.
+     * Сохраняет результаты в CSV (разделитель {@code ;}, BOM для Excel).
+     * Запись атомарная: во временный файл, затем rename — при сбое старый файл цел.
      *
      * @param lines строки данных
      */
@@ -56,9 +54,7 @@ public class LogFileService {
         }
     }
 
-    /**
-     * Есть ли сохранённый дамп оценок kp-ratings.csv в директории.
-     */
+    /** Есть ли сохранённый дамп kp-ratings.csv в директории. */
     public synchronized boolean existsKpDump() {
         if (logDir == null) {
             return false;
@@ -66,11 +62,7 @@ public class LogFileService {
         return Files.exists(logDir.resolve(KP_DUMP_FILE));
     }
 
-    /**
-     * Читает сохранённый дамп kp-ratings.csv (без заголовка).
-     *
-     * @return строки данных или null, если файла нет
-     */
+    /** Читает дамп kp-ratings.csv (без заголовка); null, если файла нет. */
     public synchronized List<String[]> readKpDump() {
         checkDir();
         Path file = logDir.resolve(KP_DUMP_FILE);
@@ -123,11 +115,7 @@ public class LogFileService {
         return fields.toArray(new String[0]);
     }
 
-    /**
-     * Устанавливает директорию для файлов результатов и создаёт её при необходимости.
-     *
-     * @param dir абсолютный или относительный путь к директории
-     */
+    /** Устанавливает директорию для файлов результатов и создаёт её при необходимости. */
     public void setLogDir(String dir) {
         this.logDir = Paths.get(dir).toAbsolutePath();
         try {

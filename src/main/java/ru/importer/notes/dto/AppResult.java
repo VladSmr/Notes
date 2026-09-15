@@ -11,6 +11,7 @@ public class AppResult {
     private String errorDetails;
     private String errorMessage;
     private int errors;
+    private int incompleteData;
     private List<MovieData> movies;
     private int notFound;
     private int rated;

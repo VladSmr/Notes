@@ -13,7 +13,7 @@
 
     <groupId>ru.importer</groupId>
     <artifactId>notes</artifactId>
-    <version>1.0.2</version>
+    <version>1.0.3</version>
     <name>notes</name>
     <description>notes</description>
 
@@ -28,6 +28,8 @@
         <jpackage.name>KP IMDB Importer</jpackage.name>
         <jpackage.vendor>KP IMDB Importer</jpackage.vendor>
         <jpackage.appVersion>1.0.0</jpackage.appVersion>
+        <jsoup.version>1.18.1</jsoup.version>
+        <bonigarcia.version>5.9.2</bonigarcia.version>
     </properties>
 
     <dependencies>
@@ -59,13 +61,13 @@
         <dependency>
             <groupId>io.github.bonigarcia</groupId>
             <artifactId>webdrivermanager</artifactId>
-            <version>5.9.2</version>
+            <version>${bonigarcia.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
-            <version>1.18.1</version>
+            <version>${jsoup.version}</version>
         </dependency>
         <!-- JavaFX (WebView-оболочка для десктоп-окна).
              Все модули объявляем ЯВНО с classifier win (нативные DLL для Windows).

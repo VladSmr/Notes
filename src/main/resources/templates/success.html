@@ -43,6 +43,11 @@
             border: 1px solid #d6d8db;
         }
 
+        .stat.incomplete {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+        }
+
         .stat.error {
             background: #f8d7da;
             border: 1px solid #f5c6cb;
@@ -84,6 +89,10 @@
 
         .status-SKIPPED_DIFFERENT {
             color: #e67e22;
+        }
+
+        .status-INCOMPLETE_DATA {
+            color: #0c7b8f;
         }
 
         .status-ERROR {
@@ -143,6 +152,10 @@
         <div class="stat skipped">
             <span class="stat-num" th:text="${result.skippedDifferent}">0</span>
             Пропущено (проставлены разные оценки на КП и IMDB)
+        </div>
+        <div class="stat incomplete">
+            <span class="stat-num" th:text="${result.incompleteData}">0</span>
+            Неполные данные (нет названия, года или оценки)
         </div>
         <div class="stat error">
             <span class="stat-num" th:text="${result.errors}">0</span>

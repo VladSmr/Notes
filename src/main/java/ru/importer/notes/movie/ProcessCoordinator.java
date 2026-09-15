@@ -3,10 +3,9 @@ package ru.importer.notes.movie;
 import org.springframework.stereotype.Component;
 
 /**
- * Синглтон-координатор процессов. Гарантирует, что парсинг и проставление
- * не выполняются одновременно: оба этапа запускаются в отдельных фоновых потоках,
- * и перед стартом каждый обязан занять «слот» через {@link #tryBegin(String)}.
- * Пока слот занят — запуск второго процесса отклоняется.
+ * Координатор процессов: парсинг и проставление не выполняются одновременно.
+ * Перед стартом этап обязан занять «слот» через {@link #tryBegin(String)};
+ * пока слот занят, второй запуск отклоняется.
  */
 @Component
 public class ProcessCoordinator {
@@ -14,35 +13,26 @@ public class ProcessCoordinator {
     private volatile boolean running = false;
     private volatile String stage = null;
 
-    /**
-     * Освобождает слот по завершении процесса (в finally).
-     */
+    /** Освобождает слот по завершении процесса (вызывается в finally). */
     public synchronized void finish() {
         running = false;
         stage = null;
     }
 
-    /**
-     * @return имя текущего этапа ("parsing" | "proset") или null, если процесс не идёт
-     */
+    /** Имя текущего этапа ("parsing" | "proset") или null, если процесс не идёт. */
     public String getStage() {
         return stage;
     }
 
-    /**
-     * @return true, если парсинг или проставление сейчас выполняется (слот занят);
-     * false, если ни один процесс не идёт
-     */
+    /** Идёт ли сейчас парсинг или проставление (слот занят). */
     public boolean isRunning() {
         return running;
     }
 
     /**
-     * Пытается занять слот для запуска процесса.
+     * Занимает слот для запуска процесса.
      *
-     * @param stage имя этапа ("parsing" | "proset")
-     *
-     * @return true, если слот свободен и занят; false, если процесс уже идёт
+     * @return true, если слот был свободен и занят
      */
     public synchronized boolean tryBegin(String stage) {
         if (running) {

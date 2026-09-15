@@ -18,11 +18,9 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 
 /**
- * Unit-тесты поиска и принудительного завершения висящего Chrome-процесса с НАШИМ
- * профилем ({@link ChromeProcessKiller}).
- *
- * <p>Реальные {@code taskkill}/перебор процессов не запускаются: швы
- * {@code findChromeProcesses()} и {@code killPid(long)} перехватываются Mockito-spy.</p>
+ * Поиск и принудительное завершение висящего Chrome с НАШИМ профилем.
+ * Реальные {@code taskkill}/перебор процессов не запускаются: швы
+ * {@code findChromeProcesses()} и {@code killPid(long)} перехватываются Mockito-spy.
  */
 class ChromeProcessKillerTest {
 
@@ -126,7 +124,6 @@ class ChromeProcessKillerTest {
 
         int killed = assertDoesNotThrow(() -> killer.killStaleChromeProcesses(PROFILE));
 
-        // Первый PID упал, второй всё равно обработан.
         assertEquals(1, killed);
         verify(killer).killPid(101L);
         verify(killer).killPid(102L);

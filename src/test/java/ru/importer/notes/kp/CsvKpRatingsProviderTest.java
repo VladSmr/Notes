@@ -6,10 +6,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ru.importer.notes.dto.MovieData;
-import ru.importer.notes.dto.MovieData.MovieStatus;
+import ru.importer.notes.dto.MovieStatus;
 import ru.importer.notes.log.LogFileService;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -104,6 +105,38 @@ class CsvKpRatingsProviderTest {
     void fetchTotalRatings_shouldCountAllRowsEvenIfDone() {
         logFile.saveKpDump("a;b;c;2000;5;1;;успешно;", "d;e;f;2001;6;2;;ошибка;err");
         assertEquals(Integer.valueOf(2), provider.fetchTotalRatings(1L, null));
+    }
+
+    @Test
+    void fetchRatings_shouldRoundTripIncompleteDataStatus() {
+        // Новый статус «неполные данные»: фильм с пустым rating (кнопки «Rate 0» на IMDB нет)
+        // не должен ретраиться при следующих прогонах.
+        logFile.saveKpDump("Женщина-Халк: Адвокат;;She-Hulk: Attorney at Law;2022;;12928878;;неполные данные;");
+
+        List<MovieData> movies = provider.fetchRatings(1L, null, null);
+        assertEquals(1, movies.size());
+        assertEquals(MovieStatus.INCOMPLETE_DATA, movies.get(0).getStatus());
+        assertEquals("неполные данные", movies.get(0).getStatusLabel());
+        assertEquals(0, movies.get(0).getKpRating());
+    }
+
+    @Test
+    void parseStatusLabel_shouldMapIncompleteDataLabel() {
+        assertEquals(MovieStatus.INCOMPLETE_DATA, MovieData.parseStatusLabel("неполные данные"));
+        assertEquals(MovieStatus.PENDING, MovieData.parseStatusLabel("неизвестный статус"));
+    }
+
+    @Test
+    void movieStatus_isDone_singleSourceOfTruth() {
+        // «Уже обработан» — единая логика в MovieStatus.isDone(), наборы статусов не расходятся.
+        assertTrue(MovieStatus.RATED.isDone());
+        assertTrue(MovieStatus.SKIPPED_SAME.isDone());
+        assertTrue(MovieStatus.SKIPPED_DIFFERENT.isDone());
+        assertTrue(MovieStatus.INCOMPLETE_DATA.isDone());
+        // Ретраятся при повторном прогоне:
+        assertFalse(MovieStatus.NOT_FOUND.isDone(), "«не найден» ищется заново по названию+году");
+        assertFalse(MovieStatus.ERROR.isDone());
+        assertFalse(MovieStatus.PENDING.isDone());
     }
 
 }

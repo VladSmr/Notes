@@ -22,12 +22,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Проверяет, что по завершении этапов «Парсинг»/«Проставление» (нормально, по ошибке
- * или по остановке пользователем — всё идёт через {@code finally} фонового потока)
- * WebDriver корректно закрывается ({@code AuthManager.closeDriver()} → {@code driver.quit()}),
- * освобождая профиль Chrome.
- *
- * <p>Все зависимости замоканы — реальные Chrome/chromedriver не запускаются.</p>
+ * По завершении этапов (нормально, по ошибке или по остановке — через {@code finally}
+ * фонового потока) WebDriver закрывается, освобождая профиль Chrome. Все зависимости
+ * замоканы — реальный Chrome не запускается.
  */
 class ProcessorDriverCloseTest {
 
@@ -72,13 +69,12 @@ class ProcessorDriverCloseTest {
 
         assertEquals("parsing", progress.getCompletedStage());
         assertFalse(coordinator.isRunning());
-        // Драйвер корректно закрыт после завершения этапа.
         verify(authManager).closeDriver();
     }
 
     /**
-     * Остановка пользователем посреди парсинга: этап завершается с ошибкой «Parsing stopped
-     * by user», но драйвер всё равно закрывается.
+     * Остановка пользователем посреди парсинга: этап завершается с ошибкой
+     * «Parsing stopped by user», но драйвер всё равно закрывается.
      */
     @Test
     void parsingAbortedByUser_stillClosesDriver() {
@@ -108,7 +104,6 @@ class ProcessorDriverCloseTest {
         AppResult result = progress.getResult();
         assertEquals("Parsing stopped by user.", result.getErrorMessage());
         assertFalse(coordinator.isRunning());
-        // При остановке пользователем драйвер тоже должен быть закрыт.
         verify(authManager).closeDriver();
     }
 
@@ -137,7 +132,6 @@ class ProcessorDriverCloseTest {
 
         assertEquals("proset", progress.getCompletedStage());
         assertFalse(coordinator.isRunning());
-        // После завершения проставления драйвер корректно закрыт.
         verify(authManager).closeDriver();
     }
 

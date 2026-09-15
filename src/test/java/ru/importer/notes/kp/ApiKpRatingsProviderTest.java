@@ -94,11 +94,47 @@ class ApiKpRatingsProviderTest {
     }
 
     @Test
+    void mapItem_shouldFallbackOriginalTitleToEnglishName() {
+        // nameOriginal nullable: для зарубежных фильмов original_title фолбэк на nameEn,
+        // чтобы колонка в CSV не пустовала.
+        JsonNode item = json("{\"kinopoiskId\":12928878,\"nameRu\":\"Женщина-Халк: Адвокат\"," +
+                "\"nameEn\":\"She-Hulk: Attorney at Law\",\"year\":\"2022\",\"type\":\"TV_SERIES\",\"userRating\":8}");
+
+        MovieData movie = provider.mapItem(item);
+        assertEquals("Женщина-Халк: Адвокат", movie.getName());
+        assertEquals("She-Hulk: Attorney at Law", movie.getNameEn());
+        assertEquals("She-Hulk: Attorney at Law", movie.getNameOriginal(), "original_title должен заполниться из nameEn");
+    }
+
+    @Test
+    void mapItem_shouldKeepEmptyOriginalTitleForRussianFilm() {
+        // У российских фильмов на КП нет ни nameEn, ни nameOriginal — original_title
+        // остаётся пустым, title берётся из nameRu (это ограничение данных API).
+        JsonNode item = json("{\"kinopoiskId\":301,\"nameRu\":\"Брат\",\"year\":\"1997\"," +
+                "\"type\":\"FILM\",\"userRating\":9,\"countries\":[{\"country\":\"Россия\"}]}");
+
+        MovieData movie = provider.mapItem(item);
+        assertEquals("Брат", movie.getName());
+        assertNull(movie.getNameOriginal());
+        assertNull(movie.getNameEn());
+    }
+
+    @Test
     void parseYear_shouldHandleNullAndGarbage() {
         assertEquals(0, ApiKpRatingsProvider.parseYear(null));
         assertEquals(0, ApiKpRatingsProvider.parseYear(""));
         assertEquals(0, ApiKpRatingsProvider.parseYear("abc"));
         assertEquals(1985, ApiKpRatingsProvider.parseYear("1985"));
+    }
+
+    @Test
+    void parseYear_shouldRespectSingleValidatorRange() {
+        // Диапазон года — единый источник KpYearValidator (1890–2050).
+        assertEquals(1895, ApiKpRatingsProvider.parseYear("1895"), "1890-е — валидная часть диапазона");
+        assertEquals(2050, ApiKpRatingsProvider.parseYear("2050"), "MAX_YEAR = 2050 принимается");
+        assertEquals(0, ApiKpRatingsProvider.parseYear("1889"), "до 1890 — мусор");
+        assertEquals(0, ApiKpRatingsProvider.parseYear("2051"), "год 2051 не распознаётся");
+        assertEquals(0, ApiKpRatingsProvider.parseYear("2100"), "2100 больше не в диапазоне");
     }
 
 }

@@ -21,12 +21,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 /**
- * Unit-тесты управления жизненным циклом WebDriver в {@link AuthManager}.
- * ChromeDriver создаётся через {@code new} — в тестах конструкция перехватывается
- * {@link MockedConstruction}, поэтому реальные Chrome/chromedriver не запускаются.
- *
- * <p>{@link ChromeProcessKiller} всегда мокается — реальный {@code taskkill}/перебор
- * процессов в тестах не выполняется.</p>
+ * Unit-тесты жизненного цикла WebDriver в {@link AuthManager}: ChromeDriver перехватывается
+ * {@link MockedConstruction}, {@link ChromeProcessKiller} мокается — реальный Chrome и
+ * taskkill не запускаются.
  */
 class AuthManagerTest {
 
@@ -43,11 +40,6 @@ class AuthManagerTest {
         assertSame(null, authManager.getDriver());
     }
 
-    /**
-     * Повторный вызов openBrowserAndWaitLogin должен СНАЧАЛА закрыть предыдущий драйвер
-     * (driver.quit()), и только потом открыть новый — иначе два Chrome конфликтуют
-     * за один профиль --user-data-dir.
-     */
     @Test
     void repeatedOpenBrowser_closesPreviousDriverBeforeOpeningNew() {
         AuthManager authManager = newAuthManager(mock(ChromeProcessKiller.class));
@@ -56,9 +48,7 @@ class AuthManagerTest {
             WebDriver second = authManager.openBrowserAndWaitLogin();
 
             assertNotSame(first, second);
-            // Предыдущий драйвер корректно закрыт.
             verify(first).quit();
-            // В AuthManager теперь живёт новый драйвер.
             assertSame(second, authManager.getDriver());
         }
     }
@@ -107,11 +97,6 @@ class AuthManagerTest {
     // Последовательность: driver.quit() → проверка висящего Chrome → taskkill
     // ------------------------------------------------------------------
 
-    /**
-     * При открытии браузера выполняется полная последовательность: сначала quit()
-     * предыдущего драйвера, затем принудительное завершение висящего Chrome с нашим
-     * профилем. Точка применения №1 («Открыть браузер» — и парсинг, и проставление).
-     */
     @Test
     void openBrowser_runsQuitBeforeForceKillInOrder() {
         ChromeProcessKiller killer = mock(ChromeProcessKiller.class);
@@ -120,7 +105,6 @@ class AuthManagerTest {
             WebDriver first = authManager.openBrowserAndWaitLogin();
             WebDriver second = authManager.openBrowserAndWaitLogin();
 
-            // Порядок: (1) quit() предыдущего драйвера → (2)+(3) поиск/принудительное завершение.
             InOrder inOrder = inOrder(first, killer);
             inOrder.verify(first).quit();
             inOrder.verify(killer).killStaleChromeProcesses();
@@ -128,13 +112,9 @@ class AuthManagerTest {
         }
     }
 
-    /**
-     * Даже если драйвера нет (жёсткое падение — ссылка потеряна, а chrome.exe остался),
-     * открытие браузера всё равно запускает проверку/принудительное завершение:
-     * именно этот сценарий разблокирует профиль перед {@code new ChromeDriver(...)}.
-     */
     @Test
     void openBrowserWithoutPreviousDriver_stillForciblyKillsStaleChrome() {
+        // Даже без живого драйвера открытие браузера разблокирует профиль принудительным завершением.
         ChromeProcessKiller killer = mock(ChromeProcessKiller.class);
         AuthManager authManager = newAuthManager(killer);
         try (MockedConstruction<ChromeDriver> ignored = mockConstruction(ChromeDriver.class)) {
@@ -145,12 +125,6 @@ class AuthManagerTest {
         }
     }
 
-    /**
-     * Точечное закрытие после этапа парсинга/проставления (Processor вызывает
-     * closeDriver() в finally) НЕ должно запускать принудительное завершение —
-     * последовательность quit → проверка → taskkill выполняется только в двух местах:
-     * перед открытием браузера и при выходе из приложения.
-     */
     @Test
     void closeDriver_directCall_doesNotForceKillProcess() {
         ChromeProcessKiller killer = mock(ChromeProcessKiller.class);
@@ -167,10 +141,6 @@ class AuthManagerTest {
         }
     }
 
-    /**
-     * Точка применения №2: при закрытии приложения (shutdown → @PreDestroy) порядок
-     * строго quit() → принудительное завершение.
-     */
     @Test
     void shutdown_runsQuitThenForceKillInOrder() {
         ChromeProcessKiller killer = mock(ChromeProcessKiller.class);

@@ -2,19 +2,18 @@ package ru.importer.notes.kp;
 
 import java.util.List;
 import java.util.function.Consumer;
+import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.WebDriver;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import ru.importer.notes.dto.MovieData;
 import ru.importer.notes.imdb.auth.AuthManager;
 import ru.importer.notes.movie.ImportProgress;
 
-/** Парсинг оценок КП через Selenium: залогиненная сессия браузера + страницы фильмов для оригинальных названий. */
+/** Парсинг оценок КП через Selenium: залогиненная сессия браузера + страницы фильмов
+ *  для оригинальных названий и валидации годов. */
+@Slf4j
 @Service
 public class SeleniumKpRatingsProvider implements KpRatingsProvider {
-
-    private static final Logger log = LoggerFactory.getLogger(SeleniumKpRatingsProvider.class);
 
     private final AuthManager authManager;
     private final KpNotesImporter notesImporter;
@@ -41,18 +40,11 @@ public class SeleniumKpRatingsProvider implements KpRatingsProvider {
         if (driver == null) {
             throw new IllegalStateException("Browser is not open");
         }
-        // getNotes наполняет список по страницам (≈20 фильмов) — колбэк вызывается после
-        // каждой страницы, чтобы промежуточный дамп появлялся по ходу парсинга.
+        // getNotes наполняет список по страницам; колбэк — после каждой страницы.
         List<MovieData> movies = notesImporter.getNotes(driver, userId, progress, onBatch);
 
-        // Знаменатель фазы 2 (original titles) зависит от фактического числа missing-фильмов,
-        // которое известно только после фазы 1. Пересчитываем полный знаменатель:
-        //   total = (единицы фазы 1 = число просканированных страниц = progress.getCurrent())
-        //         + (число missing-фильмов с URL, по которым фаза 2 сделает advance).
-        // Это приводит знаменатель в соответствие с реальным числом advance, чтобы current
-        // достигал total ровно в конце (инвариант детерминированной полосы). Фильмы без URL
-        // в фазе 2 пропускаются БЕЗ advance (см. KpNotesImporter.fetchOriginalTitles), поэтому
-        // в знаменатель не входят.
+        // Знаменатель фазы 2 (original titles) известен только после фазы 1 — пересчитываем:
+        // страницы фазы 1 + missing-фильмы с URL (без URL — без advance, в знаменатель не входят).
         if (progress != null) {
             long missingWithUrl = movies.stream()
                     .filter(m -> m.getNameEn() == null || m.getNameEn().isBlank())
@@ -67,10 +59,27 @@ public class SeleniumKpRatingsProvider implements KpRatingsProvider {
                 .count();
         if (missingOriginals > 0 && !(progress != null && progress.isAborted())) {
             log.info("Загрузка оригинальных названий со страниц фильмов: {}", missingOriginals);
-            // onBatch передаём дальше: fetchOriginalTitles сохраняет промежуточный дамп
-            // каждые 5 фильмов и в конце фазы (в т.ч. при остановке пользователем).
+            // onBatch передаём дальше: дамп сохраняется каждые 5 фильмов и в конце фазы.
             notesImporter.fetchOriginalTitles(movies, driver, progress, onBatch);
             log.info("Оригинальные названия загружены.");
+        }
+
+        // Фаза 3: валидация невалидных годов — после фазы 2, чтобы не ходить на страницу
+        // фильма дважды. Знаменатель пересчитывается по факту (после фазы 2 известен
+        // достоверно); фильмы без URL пропускаются без advance и в знаменатель не входят.
+        if (!(progress != null && progress.isAborted())) {
+            long invalidYears = movies.stream()
+                    .filter(m -> !KpYearValidator.isValidYear(m.getYear()))
+                    .filter(m -> m.getKpUrl() != null || m.getKpId() != null)
+                    .count();
+            if (invalidYears > 0) {
+                log.info("Валидация невалидных годов со страниц фильмов: {}", invalidYears);
+                if (progress != null) {
+                    progress.resetTotal(progress.getCurrent() + (int) invalidYears);
+                }
+                // onBatch передаём дальше: дамп сохраняется по ходу фазы.
+                notesImporter.fixInvalidYears(movies, driver, progress, onBatch);
+            }
         }
         return movies;
     }

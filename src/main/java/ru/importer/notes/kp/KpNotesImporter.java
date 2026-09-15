@@ -6,86 +6,85 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import ru.importer.notes.dto.MovieData;
 import ru.importer.notes.movie.ImportProgress;
 
+/**
+ * Selenium-фазы импорта оценок КП: сканирование страниц оценок ({@link #getNotes}),
+ * дозагрузка оригинальных названий и валидация годов со страниц фильмов.
+ * Разбор HTML-документа выгрузки — в {@link KpRatingsPageParser}.
+ */
 @Service
+@Slf4j
 public class KpNotesImporter {
 
     static final int PER_PAGE = 20;
-    private static final Pattern EN_TITLE_IN_PARENS = Pattern.compile("^.+?\\((.+?)\\)$");
-    private static final Pattern FILM_ID_PATTERN = Pattern.compile("/(?:film|series)/(\\d+)");
     private static final int MAX_PAGES = 300;
-    private static final Pattern PLAIN_YEAR = Pattern.compile("\\b(19\\d{2}|20\\d{2})\\b");
-    /** Первый четырёхзначный год в диапазоне 1900–2100 (для извлечения года из текста элемента). */
-    private static final Pattern YEAR_DIGITS = Pattern.compile("\\b(19\\d{2}|20\\d{2}|2100)\\b");
-    private static final String VOTES_URL = "https://www.kinopoisk.ru/user/%d/movies/voted-watched/";
     private static final String VOTES_URL_PAGE = "https://www.kinopoisk.ru/user/%d/movies/voted-watched/?page=%d";
-    private static final Pattern YEAR_IN_TEXT = Pattern.compile("\\((\\d{4})\\)");
-    private static final Logger log = LoggerFactory.getLogger(KpNotesImporter.class);
 
-    private String extractEnglishTitle(String fullText) {
-        String stripped = fullText.replaceAll("\\(\\d{4}(-\\d{2})?\\)\\s*$", "").trim();
-        Matcher m = EN_TITLE_IN_PARENS.matcher(stripped);
-        if (m.matches()) {
-            String candidate = m.group(1).trim();
-            if (candidate.matches("\\d{4}") || candidate.matches("\\d{4}-\\d{2}")) {
-                return null;
+    private final KpRatingsPageParser parser = new KpRatingsPageParser();
+
+    /**
+     * Год выпуска со страницы фильма КП по убыванию надёжности: элемент с годом →
+     * og:title → &lt;title&gt; → первый год из текста страницы (крайний случай).
+     *
+     * @return год или 0, если определить не удалось
+     */
+    private int extractYearFromCurrentPage(WebDriver driver) {
+        try {
+            Document doc = Jsoup.parse(driver.getPageSource());
+
+            Element yearEl = doc.selectFirst("span[class*=\"year\"], [class*=\"Year\"], "
+                                                     + ".film-date, [class*=\"film-date\"], [class*=\"filmDate\"]");
+            if (yearEl != null) {
+                int y = parser.parseYearDigits(yearEl.text());
+                if (y > 0) {
+                    return y;
+                }
             }
-            return candidate;
-        }
-        return null;
-    }
 
-    private String extractRussianTitle(String fullText) {
-        int idx = fullText.indexOf(" (");
-        if (idx > 0) {
-            return fullText.substring(0, idx).trim();
-        }
-        return fullText;
-    }
+            Element ogTitle = doc.selectFirst("meta[property=\"og:title\"]");
+            if (ogTitle != null) {
+                int y = parser.extractYear(ogTitle.attr("content"));
+                if (y > 0) {
+                    return y;
+                }
+            }
 
-    private int extractYear(String text) {
-        Matcher m = YEAR_IN_TEXT.matcher(text);
-        if (m.find()) {
-            try {
+            Element title = doc.selectFirst("title");
+            if (title != null) {
+                int y = parser.extractYear(title.text());
+                if (y > 0) {
+                    return y;
+                }
+            }
+
+            // Крайний fallback (риск: год каста/другого фильма) — только как последняя
+            // стратегия; единый диапазон 1890–2050 отсекает явный мусор.
+            Matcher m = KpRatingsPageParser.PLAIN_YEAR.matcher(doc.text());
+            if (m.find()) {
                 return Integer.parseInt(m.group(1));
-            } catch (NumberFormatException ignored) {
             }
+        } catch (Exception e) {
+            log.warn("Не удалось извлечь год со страницы фильма: {}", e.getMessage());
         }
         return 0;
     }
 
     /**
-     * Доставляет оригинальные названия для фильмов, у которых их нет: открывает
-     * страницу каждого фильма и берёт span[class*="originalTitle"] под русским названием.
-     * CSS-module суффикс (__nZWQK и т.п.) меняется между релизами, поэтому ищем по подстроке класса.
-     *
-     * <p>Попутно, если у фильма не проставлен год ({@code year == 0}), заполняет его со страницы
-     * фильма (см. {@link #extractYearFromCurrentPage}).</p>
-     *
-     * <p>Накопленный дамп сохраняется через {@code onBatch}: каждые 5 обработанных фильмов и
-     * обязательно в конце фазы (в т.ч. при остановке пользователем), чтобы уже собранные
-     * original titles и годы не терялись.</p>
-     *
-     * @param onBatch колбэк для промежуточного сохранения дампа (может быть null)
+     * Доставляет оригинальные названия для фильмов, у которых их нет, со страниц
+     * фильмов КП; попутно заполняет год=0. Промежуточный дамп — через {@code onBatch}
+     * каждые 5 обработанных фильмов и в конце фазы (в т.ч. при остановке пользователем).
      */
     public void fetchOriginalTitles(List<MovieData> movies, WebDriver driver, ImportProgress progress,
                                     java.util.function.Consumer<List<MovieData>> onBatch) {
@@ -116,10 +115,7 @@ public class KpNotesImporter {
                 String url = movie.getKpUrl() != null ? movie.getKpUrl()
                         : (movie.getKpId() != null ? "https://www.kinopoisk.ru/film/" + movie.getKpId() + "/" : null);
                 if (url == null) {
-                    // Фильм без URL (нет ни kpUrl, ни kpId) пропускаем БЕЗ увеличения счётчика done
-                    // и без advance прогресса: он фактически не обработан. Семантика: счётчик done —
-                    // это «обработанные» фильмы, а не «все в списке missing». Дамп всё равно
-                    // сохранится в конце фазы (см. финальный onBatch ниже).
+                    // Без URL фильм фактически не обработан: без done и без advance.
                     continue;
                 }
                 driver.get(url);
@@ -130,7 +126,6 @@ public class KpNotesImporter {
                 } else {
                     log.warn("Оригинал не найден [{}/{}]: '{}' ({})", done + 1, missing.size(), movie.getName(), url);
                 }
-                // Год: если не проставлен — заполняем со страницы фильма (не трогаем уже известный).
                 if (movie.getYear() == 0) {
                     int year = extractYearFromCurrentPage(driver);
                     if (year > 0) {
@@ -145,14 +140,12 @@ public class KpNotesImporter {
             if (progress != null) {
                 progress.advance(ImportProgress.PHASE_KP, movie.getName(), "original " + done + "/" + missing.size());
             }
-            // Промежуточный дамп каждые 5 обработанных фильмов, чтобы накопленные данные
-            // (original titles + годы) сохранялись по ходу.
+            // Промежуточный дамп каждые 5 обработанных фильмов.
             if (onBatch != null && done % 5 == 0) {
                 onBatch.accept(movies);
             }
         }
-        // Финальный дамп в конце фазы (в т.ч. при остановке пользователем), чтобы уже
-        // собранные original titles и годы гарантированно попали в выгрузку.
+        // Финальный дамп в конце фазы (в т.ч. при остановке пользователем).
         if (onBatch != null && done > 0) {
             onBatch.accept(movies);
         }
@@ -160,164 +153,110 @@ public class KpNotesImporter {
     }
 
     /**
-     * Извлекает год выпуска со страницы фильма КП. Стратегии по убыванию надёжности:
-     * <ol>
-     *   <li>элемент с годом рядом с названием ({@code span[class*="year"]},
-     *       {@code [class*="Year"]}, {@code .film-date} и т.п.);</li>
-     *   <li>{@code <meta property="og:title">} вида «Название (2021)»;</li>
-     *   <li>{@code <title>} вида «Название (2021) — смотреть онлайн»;</li>
-     *   <li>первый год из текста страницы ({@link #PLAIN_YEAR}) — крайний случай.</li>
-     * </ol>
-     *
-     * @return год или 0, если определить не удалось
-     */
-    private int extractYearFromCurrentPage(WebDriver driver) {
-        try {
-            Document doc = Jsoup.parse(driver.getPageSource());
-
-            Element yearEl = doc.selectFirst("span[class*=\"year\"], [class*=\"Year\"], "
-                    + ".film-date, [class*=\"film-date\"], [class*=\"filmDate\"]");
-            if (yearEl != null) {
-                int y = parseYearDigits(yearEl.text());
-                if (y > 0) {
-                    return y;
-                }
-            }
-
-            Element ogTitle = doc.selectFirst("meta[property=\"og:title\"]");
-            if (ogTitle != null) {
-                int y = extractYear(ogTitle.attr("content"));
-                if (y > 0) {
-                    return y;
-                }
-            }
-
-            Element title = doc.selectFirst("title");
-            if (title != null) {
-                int y = extractYear(title.text());
-                if (y > 0) {
-                    return y;
-                }
-            }
-
-            // Крайний fallback: первый год из всего текста страницы. РИСК: это может быть год
-            // каста, даты рождения актёров или другого фильма (ссылки на похожие). Сужение области
-            // поиска (например, «рядом с заголовком») ненадёжно и может сломать определение года,
-            // поэтому оставляем как есть, но диапазон 1900–2100 в PLAIN_YEAR отсекает явный мусор
-            // (годы рождения до 1900 и будущие даты). Приемлемо только как последняя стратегия.
-            Matcher m = PLAIN_YEAR.matcher(doc.text());
-            if (m.find()) {
-                return Integer.parseInt(m.group(1));
-            }
-        } catch (Exception e) {
-            log.warn("Не удалось извлечь год со страницы фильма: {}", e.getMessage());
-        }
-        return 0;
-    }
-
-    /**
-     * Вытаскивает первый четырёхзначный год из текста элемента, либо 0.
-     *
-     * <p>Извлекаем ПЕРВЫЙ год в диапазоне 1900–2100 через regex, а не склейку всех цифр:
-     * элемент может содержать год И длительность («2021 · 2 ч 30 мин»), и наивная склейка
-     * дала бы абсурдное «2021230». Диапазон дополнительно отсекает мусор (годы каста,
-     * даты рождения и т.п.). package-private для тестов.</p>
-     */
-    int parseYearDigits(String text) {
-        if (text == null || text.isBlank()) {
-            return 0;
-        }
-        Matcher m = YEAR_DIGITS.matcher(text);
-        if (m.find()) {
-            try {
-                int y = Integer.parseInt(m.group(1));
-                if (y >= 1900 && y <= 2100) {
-                    return y;
-                }
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return 0;
-    }
-
-    /**
-     * Читает общее количество оценок пользователя со страницы оценок КП.
-     * Счётчик: в футере есть ссылка a[href*="movies/voted-watched"], внутри неё
-     * первый span[class*="statValue"] — число оценок.
+     * Общее количество оценок пользователя: ссылка a[href*="movies/voted-watched"]
+     * в футере, внутри неё первый span[class*="statValue"].
      *
      * @return количество оценок или null, если страница не загрузилась / счётчик не виден
      */
     public Integer fetchTotalRatings(WebDriver driver, Long userId) {
-        try {
-            driver.get(String.format(VOTES_URL, userId));
-            long deadline = System.currentTimeMillis() + 15_000;
-            while (System.currentTimeMillis() < deadline) {
-                try {
-                    Document doc = Jsoup.parse(driver.getPageSource());
-                    Integer total = parseTotalRatings(doc);
-                    if (total != null) {
-                        log.info("Всего оценок на КП у пользователя {}: {}", userId, total);
-                        return total;
-                    }
-                } catch (Exception ignored) {
-                }
-            }
-            log.warn("Не удалось прочитать счётчик оценок КП: страница не загрузилась или счётчик не виден");
-        } catch (Exception e) {
-            log.warn("Не удалось прочитать счётчик оценок КП: {}", e.getMessage());
-        }
-        return null;
-    }
-
-    private Element findContainer(Element filmLink) {
-        Element parent = filmLink.parent();
-        for (int i = 0; i < 8 && parent != null; i++) {
-            String tag = parent.tagName();
-            if ("body".equals(tag) || "html".equals(tag)) {
-                break;
-            }
-            if (("div".equals(tag) || "li".equals(tag) || "tr".equals(tag)) && isRichItemContainer(parent)) {
-                return parent;
-            }
-            parent = parent.parent();
-        }
-
-        parent = filmLink.parent();
-        for (int i = 0; i < 5 && parent != null; i++) {
-            String tag = parent.tagName();
-            if ("div".equals(tag) || "tr".equals(tag) || "li".equals(tag)) {
-                return parent;
-            }
-            parent = parent.parent();
-        }
-        return null;
-    }
-
-    private Element findNameElement(Element item) {
-        if (item.tagName().equals("a") && isFilmOrSeriesHref(item.attr("href")) && !item.text().isBlank()) {
-            return item;
-        }
-
-        for (Element link : item.select("a[href*=/film/], a[href*=/series/]")) {
-            if (!link.text().isBlank()) {
-                return link;
-            }
-        }
-
-        for (Element el : item.select("[class*=\"name\"], [class*=\"Name\"], .title, [class*=\"title\"]")) {
-            if (!el.text().isBlank()) {
-                return el;
-            }
-        }
-
-        return null;
+        return parser.fetchTotalRatings(driver, userId);
     }
 
     /**
-     * Сканирует страницы оценок КП, начиная с первой, уведомляя о накопленных порциях
-     * через {@code onBatch}. Колбэк вызывается после каждой обработанной страницы
-     * (страница содержит до {@value #PER_PAGE} фильмов), чтобы вызывающий мог периодически
-     * сохранять промежуточный дамп.
+     * Валидация годов на этапе парсинга: у фильмов с невалидным годом настоящий год
+     * берётся со страницы фильма КП. Одна попытка на фильм, без ретраев: не открылось
+     * или не нашлось — год остаётся 0 (фильм получит «неполные данные» при проставлении).
+     * После дозапроса название прогоняется через {@link GluedYearTitleCleaner#stripTrailingGluedYear}:
+     * склейка «Название22025» зачищается, если соответствует настоящему году.
+     * Дамп сохраняется через {@code onBatch} каждые 5 фильмов и в конце фазы.
+     */
+    public void fixInvalidYears(List<MovieData> movies, WebDriver driver, ImportProgress progress,
+                                java.util.function.Consumer<List<MovieData>> onBatch) {
+        List<MovieData> invalid = new ArrayList<>();
+        for (MovieData m : movies) {
+            if (!KpYearValidator.isValidYear(m.getYear())) {
+                invalid.add(m);
+            }
+        }
+        if (invalid.isEmpty()) {
+            log.info("Годы валидны у всех фильмов, проход не нужен");
+            return;
+        }
+        log.info("Валидация годов со страниц фильмов: {} фильмов", invalid.size());
+        driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(2));
+
+        int done = 0;
+        for (MovieData movie : invalid) {
+            if (progress != null) {
+                // Мягкая пауза между фильмами (безопасная точка, не посреди операции с браузером).
+                progress.waitWhilePaused();
+                if (progress.isAborted()) {
+                    log.info("Остановлен пользователем: валидировано годов {}/{}", done, invalid.size());
+                    break;
+                }
+            }
+            try {
+                String url = movie.getKpUrl() != null ? movie.getKpUrl()
+                        : (movie.getKpId() != null ? "https://www.kinopoisk.ru/film/" + movie.getKpId() + "/" : null);
+                if (url == null) {
+                    // Без URL фильм фактически не обработан: без advance.
+                    continue;
+                }
+                driver.get(url);
+                int year = extractYearFromCurrentPage(driver);
+                if (KpYearValidator.isValidYear(year)) {
+                    movie.setYear(year);
+                    // Название могло быть склеено с годом, пока год был неизвестен:
+                    // зачищаем склейку (хвост отрезается только при совпадении с настоящим годом).
+                    if (movie.getName() != null) {
+                        String stripped = GluedYearTitleCleaner.stripTrailingGluedYear(movie.getName(), year);
+                        if (!stripped.equals(movie.getName())) {
+                            log.info("Название '{}' было склеено с годом — исправлено на '{}' ({} г.)",
+                                     movie.getName(), stripped, year);
+                            movie.setName(stripped);
+                        }
+                    }
+                    log.info("Год со страницы фильма [{}/{}]: '{}' (kpId={}) -> {}",
+                             done + 1, invalid.size(), movie.getName(), movie.getKpId(), year);
+                } else {
+                    log.warn("Год не найден на странице фильма [{}/{}]: '{}' ({}) — оставляю 0",
+                             done + 1, invalid.size(), movie.getName(), url);
+                }
+            } catch (Exception e) {
+                log.warn("Не удалось валидировать год [{}/{}]: '{}': {}",
+                         done + 1, invalid.size(), movie.getName(), e.getMessage());
+            }
+            done++;
+            if (progress != null) {
+                progress.advance(ImportProgress.PHASE_KP, movie.getName(), "year " + done + "/" + invalid.size());
+            }
+            // Промежуточный дамп каждые 5 обработанных фильмов.
+            if (onBatch != null && done % 5 == 0) {
+                onBatch.accept(movies);
+            }
+        }
+        // Финальный дамп в конце фазы (в т.ч. при остановке пользователем).
+        if (onBatch != null && done > 0) {
+            onBatch.accept(movies);
+        }
+        log.info("Валидация годов завершена");
+    }
+
+    public List<MovieData> getNotes(Long userId) {
+        List<MovieData> result = new ArrayList<>();
+        for (int page = 1; page <= MAX_PAGES; page++) {
+            List<MovieData> pageMovies = parsePage(userId, page);
+            result.addAll(pageMovies);
+            if (pageMovies.size() < PER_PAGE) {
+                break;
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Сканирует страницы оценок КП с первой; после каждой обработанной страницы
+     * (до {@value #PER_PAGE} фильмов) вызывает {@code onBatch} для промежуточного дампа.
      */
     public List<MovieData> getNotes(WebDriver driver, Long userId, ImportProgress progress,
                                     java.util.function.Consumer<List<MovieData>> onBatch) {
@@ -327,8 +266,7 @@ public class KpNotesImporter {
 
         for (int page = 1; page <= MAX_PAGES; page++) {
             if (progress != null) {
-                // Мягкая пауза: блокируемся в безопасной точке между страницами, пока
-                // пользователь не нажмёт «Продолжить», затем проверяем, не остановлен ли процесс.
+                // Пауза/остановка проверяются в безопасной точке между страницами.
                 progress.waitWhilePaused();
                 if (progress.isAborted()) {
                     log.info("Импорт остановлен пользователем на странице {}", page);
@@ -342,7 +280,7 @@ public class KpNotesImporter {
 
             List<MovieData> pageMovies;
             try {
-                Document doc = waitForPageLoad(driver);
+                Document doc = parser.waitForPageLoad(driver);
 
                 if (page == 1) {
                     try {
@@ -354,7 +292,7 @@ public class KpNotesImporter {
                     }
                 }
 
-                pageMovies = parseDocument(doc);
+                pageMovies = parser.parseDocument(doc);
                 result.addAll(pageMovies);
 
                 log.info("Страница {} успешно просканирована: найдено {} фильмов, распарсено {}",
@@ -365,9 +303,7 @@ public class KpNotesImporter {
             }
 
             if (progress != null) {
-                // Фаза 1 (парсинг): каждая страница = 1 единица работы (по схеме «N + N/20»).
-                // Знаменатель total уже задан как N + N/20 (selenium) или N/20 (api), поэтому
-                // здесь добавляем ровно 1 единицу за страницу, а не по числу фильмов.
+                // Фаза 1 (парсинг): каждая страница = 1 единица, знаменатель уже задан как «N + N/20».
                 progress.advance(ImportProgress.PHASE_KP, "Страница " + page, "kp");
             }
 
@@ -386,171 +322,6 @@ public class KpNotesImporter {
         return result;
     }
 
-    public List<MovieData> getNotes(Long userId) {
-        List<MovieData> result = new ArrayList<>();
-        for (int page = 1; page <= MAX_PAGES; page++) {
-            List<MovieData> pageMovies = parsePage(userId, page);
-            result.addAll(pageMovies);
-            if (pageMovies.size() < PER_PAGE) {
-                break;
-            }
-        }
-        return result;
-    }
-
-    private boolean isFilmOrSeriesHref(String href) {
-        return href != null && (href.contains("/film/") || href.contains("/series/"));
-    }
-
-    private boolean isRichItemContainer(Element el) {
-        if (el.children().size() < 2) {
-            return false;
-        }
-        if (spansMultipleFilms(el)) {
-            return false;
-        }
-        for (Element a : el.select("a[href*=/film/], a[href*=/series/]")) {
-            if (!a.text().isBlank()) {
-                return true;
-            }
-        }
-        return !el.select("[class*=\"name\"], [class*=\"Name\"], .title, [class*=\"title\"], " +
-                                  "span.year, [class*=\"year\"], [class*=\"value\"], [class*=\"rating\"], [class*=\"Rating\"]").isEmpty();
-    }
-
-    private void merge(MovieData target, MovieData source) {
-        if ((target.getName() == null || target.getName().isBlank())
-                && source.getName() != null && !source.getName().isBlank()) {
-            target.setName(source.getName());
-        }
-        if (target.getNameEn() == null && source.getNameEn() != null) {
-            target.setNameEn(source.getNameEn());
-        }
-        if (target.getYear() == 0 && source.getYear() > 0) {
-            target.setYear(source.getYear());
-        }
-        if (target.getKpRating() == 0 && source.getKpRating() > 0) {
-            target.setKpRating(source.getKpRating());
-        }
-    }
-
-    List<MovieData> parseDocument(Document doc) {
-        Map<Long, MovieData> byId = new LinkedHashMap<>();
-        List<Long> order = new ArrayList<>();
-
-        Elements filmLinks = doc.select("a[href*='/film/'], a[href*='/series/']");
-        for (Element link : filmLinks) {
-            Matcher m = FILM_ID_PATTERN.matcher(link.attr("href"));
-            if (!m.find()) {
-                continue;
-            }
-
-            Long filmId = Long.parseLong(m.group(1));
-            Element container = findContainer(link);
-
-            MovieData parsed = parseItem(container != null ? container : link, filmId);
-            if (parsed == null) {
-                continue;
-            }
-
-            if (!byId.containsKey(filmId)) {
-                byId.put(filmId, parsed);
-                order.add(filmId);
-            } else {
-                merge(byId.get(filmId), parsed);
-            }
-        }
-
-        List<MovieData> movies = new ArrayList<>();
-        for (Long id : order) {
-            movies.add(byId.get(id));
-        }
-
-        if (movies.isEmpty()) {
-            Elements items = doc.select("[class*=\"vote\"]");
-            if (items.isEmpty()) {
-                items = doc.select("div.item, tr.vote");
-            }
-            for (Element item : items) {
-                MovieData movie = parseItem(item, null);
-                if (movie != null) {
-                    movies.add(movie);
-                }
-            }
-        }
-
-        return movies;
-    }
-
-    MovieData parseItem(Element item, Long filmId) {
-        String nameRus = null;
-        String nameEn = null;
-        int year = 0;
-        int rating = 0;
-
-        Element nameEl = findNameElement(item);
-        if (nameEl != null) {
-            String fullText = nameEl.text().trim();
-            if (filmId == null) {
-                Matcher m = FILM_ID_PATTERN.matcher(nameEl.attr("href"));
-                if (m.find()) {
-                    filmId = Long.parseLong(m.group(1));
-                }
-            }
-
-            nameRus = extractRussianTitle(fullText);
-            nameEn = extractEnglishTitle(fullText);
-            year = extractYear(fullText);
-        }
-
-        if (filmId == null && nameRus == null) {
-            return null;
-        }
-
-        Element yearEl = item.select("span.year, [class*=\"year\"], .info .year, .userFilm__year, [class*=\"Year\"]").first();
-        if (yearEl != null) {
-            try {
-                year = Integer.parseInt(yearEl.text().trim().replaceAll("\\D", ""));
-            } catch (NumberFormatException ignored) {
-            }
-        }
-
-        if (year == 0) {
-            Matcher ym = PLAIN_YEAR.matcher(item.text());
-            if (ym.find()) {
-                try {
-                    year = Integer.parseInt(ym.group(1));
-                } catch (NumberFormatException ignored) {
-                }
-            }
-        }
-
-        if (nameRus != null) {
-            nameRus = stripGenreTail(nameRus);
-            nameRus = stripYearFromName(nameRus, year);
-        }
-
-        Element ratingEl = item.select("span.value, [class*=\"value\"], .vote .value, .rating, [class*=\"ratingValue\"], [class*=\"Rating\"]").first();
-        if (ratingEl != null) {
-            try {
-                rating = Integer.parseInt(ratingEl.text().trim().replaceAll("\\D", ""));
-            } catch (NumberFormatException ignored) {
-            }
-        }
-
-        MovieData movie = new MovieData();
-        movie.setKpId(filmId);
-        movie.setName(nameRus);
-        movie.setNameEn(nameEn);
-        movie.setYear(year);
-        movie.setKpRating(rating);
-        if (filmId != null) {
-            boolean series = !item.select("a[href*='/series/']").isEmpty();
-            movie.setKpUrl("https://www.kinopoisk.ru/" + (series ? "series/" : "film/") + filmId + "/");
-        }
-        return movie;
-    }
-
     private List<MovieData> parsePage(Long userId, int page) {
         List<MovieData> movies;
         try {
@@ -559,30 +330,11 @@ public class KpNotesImporter {
                                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                                 .timeout(15000)
                                 .get();
-            movies = parseDocument(doc);
+            movies = parser.parseDocument(doc);
         } catch (IOException e) {
             throw new RuntimeException("Failed to parse KP page " + page, e);
         }
         return movies;
-    }
-
-    /**
-     * Парсит число оценок из футера страницы оценок КП. package-private для тестов.
-     */
-    Integer parseTotalRatings(Document doc) {
-        for (Element link : doc.select("a[href*='movies/voted-watched']")) {
-            Element value = link.selectFirst("span[class*='statValue']");
-            if (value != null) {
-                String text = value.text().trim().replaceAll("\\D", "");
-                if (!text.isEmpty()) {
-                    try {
-                        return Integer.parseInt(text);
-                    } catch (NumberFormatException ignored) {
-                    }
-                }
-            }
-        }
-        return null;
     }
 
     private String pollOriginalTitle(WebDriver driver) {
@@ -599,52 +351,6 @@ public class KpNotesImporter {
             }
         }
         return null;
-    }
-
-    private boolean spansMultipleFilms(Element el) {
-        Set<Long> ids = new HashSet<>();
-        for (Element a : el.select("a[href*=/film/], a[href*=/series/]")) {
-            Matcher m = FILM_ID_PATTERN.matcher(a.attr("href"));
-            if (m.find()) {
-                ids.add(Long.parseLong(m.group(1)));
-                if (ids.size() > 1) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private String stripGenreTail(String name) {
-        if (name == null) {
-            return null;
-        }
-        int idx = name.indexOf(',');
-        if (idx > 0) {
-            return name.substring(0, idx).trim();
-        }
-        return name.trim();
-    }
-
-    private String stripYearFromName(String name, int year) {
-        if (year <= 0 || name == null) {
-            return name;
-        }
-        return name.replaceAll("\\s*" + year + "\\s*", "").trim();
-    }
-
-    private Document waitForPageLoad(WebDriver driver) {
-        long deadline = System.currentTimeMillis() + 15_000;
-        int last = -1;
-        while (System.currentTimeMillis() < deadline) {
-            Document doc = Jsoup.parse(driver.getPageSource());
-            int count = doc.select("a[href*='/film/'], a[href*='/series/']").size();
-            if (count > 0 && count == last) {
-                return doc;
-            }
-            last = count;
-        }
-        return Jsoup.parse(driver.getPageSource());
     }
 
 }

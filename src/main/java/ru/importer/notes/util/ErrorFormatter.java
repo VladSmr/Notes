@@ -12,13 +12,7 @@ public final class ErrorFormatter {
     private ErrorFormatter() {
     }
 
-    /**
-     * Возвращает полный текст исключения: первой строкой {@code e.toString()}
-     * (класс и сообщение), далее — полный stack trace и причина (cause).
-     *
-     * @param e исключение или {@code null}
-     * @return многострочный текст исключения или {@code null}, если {@code e == null}
-     */
+    /** Полный текст исключения ({@code e.toString()} + stack trace) или null. */
     public static String format(Throwable e) {
         if (e == null) {
             return null;

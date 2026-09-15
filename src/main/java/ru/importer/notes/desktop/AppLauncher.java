@@ -1,18 +1,11 @@
 package ru.importer.notes.desktop;
 
 /**
- * Обёртка-запускатель десктоп-приложения для упакованного (jpackage) билда.
- *
- * <p>Когда JavaFX лежит на classpath (а не на module-path) — например, при запуске из
- * thin-JAR с зависимостями в папке {@code app/*} — прямой вызов
- * {@link DesktopLauncher#main} приводит к ошибке
- * {@code "JavaFX runtime components are missing"}: {@code Application.launch} из
- * безымянного модуля отказывается стартовать без явного module-path.</p>
- *
- * <p>Обход: вызываем {@code com.sun.javafx.application.LauncherImpl.launchApplication},
- * который запускает {@link DesktopLauncher} (наследник {@code javafx.application.Application})
- * без этой проверки. Именно {@code AppLauncher} указывается как {@code --main-class}
- * в jpackage; {@link DesktopLauncher#main} остаётся для запуска из IDE/разработки.</p>
+ * Запускатель десктоп-приложения для jpackage-билда: когда JavaFX на classpath
+ * (а не на module-path), прямой вызов {@link DesktopLauncher#main} падает с ошибкой
+ * «JavaFX runtime components are missing». Обход — через
+ * {@code com.sun.javafx.application.LauncherImpl.launchApplication}, минующий проверку.
+ * Указывается как {@code --main-class} в jpackage.
  */
 public final class AppLauncher {
 
@@ -24,4 +17,5 @@ public final class AppLauncher {
         com.sun.javafx.application.LauncherImpl.launchApplication(
                 DesktopLauncher.class, args);
     }
+
 }
