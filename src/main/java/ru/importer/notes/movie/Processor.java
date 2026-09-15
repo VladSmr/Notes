@@ -15,7 +15,7 @@ import ru.importer.notes.kp.KpRatingsProvider;
 import ru.importer.notes.log.LogFileService;
 
 /**
- * Оркестратор двух этапов: «Парсинг» (оценки КП → дамп kp-ratings.csv, IMDB не участвует)
+ * Оркестратор двух этапов: «Парсинг» (оценки КП → дамп kp-ratings-{userId}-{метод}.csv, IMDB не участвует)
  * и «Проставление» (чтение дампа → проставление оценок на IMDB). Логика этапов вынесена
  * в {@link ParsingStage} и {@link ProsettingStage}, запись дампа — в {@link KpDumpWriter};
  * публичный API сохранён для {@code MainController}. Этапы идут в фоновых потоках и не
@@ -161,7 +161,7 @@ public class Processor {
     }
 
     /**
-     * Подготовка парсинга; при существующем kp-ratings.csv — запрос подтверждения перезаписи.
+     * Подготовка парсинга; при существующем дампе kp-ratings-{userId}-{метод}.csv — запрос подтверждения перезаписи.
      */
     public String prepareParsing(InputData inputData, Model model) {
         return parsingStage.prepareParsing(inputData, model);

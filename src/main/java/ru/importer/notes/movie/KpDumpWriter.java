@@ -8,9 +8,9 @@ import ru.importer.notes.dto.MovieStatus;
 import ru.importer.notes.log.LogFileService;
 
 /**
- * Запись дампа kp-ratings.csv: построчный формат (разделитель «;», экранирование значений
- * через {@link #escapeCsv}) и устойчивое сохранение с ретраями и запросом нового пути
- * ({@link #saveKpDumpSafely}).
+ * Запись дампа оценок КП (имя файла задаёт {@link LogFileService}: kp-ratings-{userId}-{метод}.csv):
+ * построчный формат (разделитель «;», экранирование значений через {@link #escapeCsv}) и
+ * устойчивое сохранение с ретраями и запросом нового пути ({@link #saveKpDumpSafely}).
  */
 @Slf4j
 @AllArgsConstructor
@@ -163,7 +163,8 @@ class KpDumpWriter {
                 }
                 // Файл занят другим процессом — текущее поведение с ретраями и паузой.
                 if (justResumed) {
-                    log.warn("Файл kp-ratings.csv всё ещё занят после «Продолжить»: {}", e.getMessage());
+                    log.warn("Файл {} всё ещё занят после «Продолжить»: {}",
+                             logFile.getKpDumpFileName(), e.getMessage());
                     progress.pause("paused-still-busy");
                     progress.waitWhilePaused();
                     if (progress.isAborted()) {
@@ -172,11 +173,12 @@ class KpDumpWriter {
                     continue;
                 }
                 long delay = attempt == 1 ? 5000 : 30000;
-                log.warn("Не удалось сохранить kp-ratings.csv (попытка {}): {} — повтор через {} с",
-                         attempt, e.getMessage(), delay / 1000);
+                log.warn("Не удалось сохранить {} (попытка {}): {} — повтор через {} с",
+                         logFile.getKpDumpFileName(), attempt, e.getMessage(), delay / 1000);
                 sleepUninterruptibly(delay);
                 if (++attempt > 2) {
-                    log.warn("kp-ratings.csv всё ещё занят. Процесс на паузе: закройте файл и нажмите «Продолжить».");
+                    log.warn("{} всё ещё занят. Процесс на паузе: закройте файл и нажмите «Продолжить».",
+                             logFile.getKpDumpFileName());
                     progress.pause("paused");
                     progress.waitWhilePaused();
                     if (progress.isAborted()) {

@@ -46,7 +46,7 @@
     </div>
 
     <div class="notice">
-        <strong>Важно:</strong> не открывайте и не редактируйте файл <code>kp-ratings.csv</code> вручную, пока идёт проставление.
+        <strong>Важно:</strong> не открывайте и не редактируйте файл дампа <code>kp-ratings-*.csv</code> вручную, пока идёт проставление.
     </div>
 
     <button id="pause-btn" onclick="pauseImport()" style="margin-top: 24px; padding: 10px 24px; font-size: 16px; cursor: pointer; background: #ffc107; color: white; border: none; border-radius: 6px;">Пауза</button>
@@ -140,7 +140,7 @@
             pct = 0;
             document.getElementById('counter').textContent = 'Чтение дампа...';
             fill.classList.add('scanning');
-            statusText = 'Чтение kp-ratings.csv...';
+            statusText = 'Чтение дампа kp-ratings-*.csv...';
             document.getElementById('movie-name').textContent = '';
         } else {
             if (currentMovie) {

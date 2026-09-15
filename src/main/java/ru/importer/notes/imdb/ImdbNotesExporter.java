@@ -204,10 +204,10 @@ public class ImdbNotesExporter {
 
     /**
      * Этап «Проставление»: ищет каждый фильм на IMDB и проставляет оценку.
-     * Фильмы берутся из дампа kp-ratings.csv, уже обработанные (done) пропускаются.
+     * Фильмы берутся из выбранного дампа kp-ratings-*.csv, уже обработанные (done) пропускаются.
      *
      * @param onMovieProcessed колбэк сохранения дампа — вызывается после каждых 5 фильмов,
-     *                         чтобы статусы появлялись в kp-ratings.csv по ходу работы
+     *                         чтобы статусы появлялись в дампе по ходу работы
      */
     public void evaluate(List<MovieData> movies, WebDriver driver, ImportProgress progress,
                          Runnable onMovieProcessed) {

@@ -21,7 +21,8 @@
     <h1>Проставление оценок на IMDB</h1>
 
     <div class="info">
-        Оценки будут взяты из сохранённого дампа <code>kp-ratings.csv</code> в указанной директории.
+        Оценки будут взяты из сохранённого дампа в указанной директории: самый свежий файл
+        <code>kp-ratings-{ID}-{метод}.csv</code> ({ID} — ID профиля КП, {метод} — способ парсинга), а при его отсутствии — старый <code>kp-ratings.csv</code>.
         Кинопоиск не опрашивается. Уже обработанные фильмы (со статусом в дампе) будут пропущены.
     </div>
 
@@ -30,9 +31,9 @@
     </div>
 
     <form action="/notes/proset-submit" method="post">
-        <label for="logDirectory">Директория с дампом kp-ratings.csv:</label>
+        <label for="logDirectory">Директория с дампом оценок (kp-ratings-*.csv):</label>
         <input type="text" id="logDirectory" name="logDirectory" required th:value="${defaultLogDir}">
-        <div class="hint">Путь к папке, где лежит файл kp-ratings.csv (результат этапа «Парсинг»). По умолчанию — рабочая папка приложения в вашем профиле (%USERPROFILE%\KP-IMDB-Importer). Можно указать свою.</div>
+        <div class="hint">Путь к папке, где лежит файл дампа kp-ratings-{ID}-{метод}.csv или kp-ratings.csv (результат этапа «Парсинг»; будет взят самый свежий по времени изменения). По умолчанию — рабочая папка приложения в вашем профиле (%USERPROFILE%\KP-IMDB-Importer). Можно указать свою.</div>
 
         <button type="submit">Далее: открыть браузер IMDB</button>
     </form>

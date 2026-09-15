@@ -166,7 +166,7 @@
     <p>Всего фильмов с КП: <strong th:text="${result.totalMovies}">0</strong></p>
 
     <div class="log-link">
-        <p>Результат сохранён в: <code>kp-ratings.csv</code> (в указанной директории)</p>
+        <p>Результат сохранён в: <code th:text="${kpDumpFile}">kp-ratings-{ID}-{метод}.csv</code> (в указанной директории)</p>
     </div>
 
     <h2>Детали</h2>

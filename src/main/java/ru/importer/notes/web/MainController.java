@@ -14,6 +14,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import ru.importer.notes.dto.AppResult;
 import ru.importer.notes.dto.InputData;
 import ru.importer.notes.log.LogBuffer;
+import ru.importer.notes.log.LogFileService;
 import ru.importer.notes.movie.ImportProgress;
 import ru.importer.notes.movie.ProcessCoordinator;
 import ru.importer.notes.movie.Processor;
@@ -27,13 +28,15 @@ public class MainController implements ErrorController {
     private final Processor processor;
     private final ImportProgress progress;
     private final LogBuffer logBuffer;
+    private final LogFileService logFile;
     private final ProcessCoordinator coordinator;
 
     public MainController(Processor processor, ImportProgress progress, LogBuffer logBuffer,
-                          ProcessCoordinator coordinator) {
+                          LogFileService logFile, ProcessCoordinator coordinator) {
         this.processor = processor;
         this.progress = progress;
         this.logBuffer = logBuffer;
+        this.logFile = logFile;
         this.coordinator = coordinator;
     }
 
@@ -53,7 +56,7 @@ public class MainController implements ErrorController {
         return "main";
     }
 
-    /** Форма проставления (источник — kp-ratings.csv). */
+    /** Форма проставления (источник — дамп kp-ratings-*.csv / kp-ratings.csv). */
     @GetMapping("/proset")
     public String proset(Model model) {
         model.addAttribute("processRunning", coordinator.isRunning());
@@ -116,6 +119,7 @@ public class MainController implements ErrorController {
             return "error";
         }
         model.addAttribute("result", result);
+        model.addAttribute("kpDumpFile", logFile.getKpDumpFileName());
         return "parsing-success";
     }
 
@@ -149,6 +153,7 @@ public class MainController implements ErrorController {
             return "error";
         }
         model.addAttribute("result", result);
+        model.addAttribute("kpDumpFile", logFile.getKpDumpFileName());
         return "success";
     }
 

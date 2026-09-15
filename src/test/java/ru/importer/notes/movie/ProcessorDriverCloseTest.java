@@ -115,7 +115,7 @@ class ProcessorDriverCloseTest {
         when(authManager.isLoggedIn()).thenReturn(true);
         ImdbNotesExporter exporter = mock(ImdbNotesExporter.class);
         LogFileService logFile = mock(LogFileService.class);
-        when(logFile.existsKpDump()).thenReturn(true);
+        when(logFile.selectKpDumpFile()).thenReturn(true);
 
         KpRatingsProvider savedProvider = providerWithKey("saved");
         when(savedProvider.fetchRatings(eq(0L), isNull(), any(ImportProgress.class)))

@@ -1,5 +1,7 @@
 package ru.importer.notes.kp;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -93,6 +95,28 @@ class CsvKpRatingsProviderTest {
     void fetchRatings_shouldReturnEmptyWhenNoDump() {
         assertTrue(provider.fetchRatings(1L, null, null).isEmpty());
         assertNull(provider.fetchTotalRatings(1L, null));
+    }
+
+    @Test
+    void fetchRatings_shouldReadNewestNamedDump() throws IOException {
+        // Два дампа разных профилей: провайдер должен читать самый свежий по времени изменения.
+        writeDumpFile("kp-ratings-111-api.csv", "Old;Old;;2000;5;1;;;",
+                System.currentTimeMillis() - 3_600_000);
+        writeDumpFile("kp-ratings-222-selenium.csv", "New;New;;2001;6;2;;;",
+                System.currentTimeMillis());
+        assertTrue(logFile.selectKpDumpFile());
+
+        List<MovieData> movies = provider.fetchRatings(222L, null, null);
+        assertEquals(1, movies.size());
+        assertEquals("New", movies.get(0).getName());
+    }
+
+    /** Пишет файл дампа: заголовок + одна строка данных, с явным временем изменения. */
+    private void writeDumpFile(String fileName, String row, long lastModified) throws IOException {
+        Path file = Files.createFile(tempDir.resolve(fileName));
+        Files.writeString(file, "title;original_title;english_title;year;rating;kp_id;imdb_id;status;error\n"
+                + row + "\n");
+        assertTrue(file.toFile().setLastModified(lastModified), "Не удалось задать время изменения " + fileName);
     }
 
     @Test

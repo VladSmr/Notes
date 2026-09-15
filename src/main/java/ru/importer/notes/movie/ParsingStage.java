@@ -21,8 +21,8 @@ import ru.importer.notes.log.LogFileService;
 import ru.importer.notes.util.ErrorFormatter;
 
 /**
- * Этап «Парсинг» (только Кинопоиск -> kp-ratings.csv): подготовка браузера КП, запуск
- * фонового парсинга выбранным способом и сохранение дампа. Подготовка браузера
+ * Этап «Парсинг» (только Кинопоиск -> дамп kp-ratings-{userId}-{метод}.csv): подготовка браузера КП,
+ * запуск фонового парсинга выбранным способом и сохранение дампа. Подготовка браузера
  * сериализуется через {@code browserLock} — общий с этапом «Проставление» объект
  * (см. {@link Processor}); слот {@link ProcessCoordinator} занимается перед стартом
  * и освобождается в {@code finally} фонового потока.
@@ -52,7 +52,7 @@ class ParsingStage {
         this.browserLock = browserLock;
     }
 
-    /** Подготовка парсинга; при существующем kp-ratings.csv — запрос подтверждения перезаписи. */
+    /** Подготовка парсинга; при существующем дампе kp-ratings-{userId}-{метод}.csv — запрос подтверждения перезаписи. */
     String prepareParsing(InputData inputData, Model model) {
         if (coordinator.isRunning()) {
             model.addAttribute(ERROR_MESSAGE, "Процесс уже идёт (этап: " + coordinator.getStage()
@@ -64,7 +64,8 @@ class ParsingStage {
             return ERROR;
         }
         if (logFile.existsKpDump()) {
-            log.warn("Парсинг: kp-ratings.csv уже существует — требуется подтверждение перезаписи");
+            log.warn("Парсинг: дамп {} уже существует — требуется подтверждение перезаписи",
+                     logFile.getKpDumpFileName());
             return "confirm-overwrite";
         }
         return openParsingBrowser(inputData, parserType, model);
@@ -101,6 +102,8 @@ class ParsingStage {
             return null;
         }
         logFile.setLogDir(inputData.getLogDirectory());
+        // Имя дампа с id профиля КП и способом: kp-ratings-{userId}-{метод}.csv.
+        logFile.setKpDumpName(inputData.getKpUserId(), parserType);
         fillParsingAttrs(model, inputData, parserType);
         return parserType;
     }
@@ -109,6 +112,7 @@ class ParsingStage {
         model.addAttribute("kpUserId", inputData.getKpUserId());
         model.addAttribute("logDirectory", inputData.getLogDirectory());
         model.addAttribute("parserType", parserType);
+        model.addAttribute("kpDumpFile", logFile.getKpDumpFileName());
         model.addAttribute("apiToken", inputData.getApiToken() != null ? inputData.getApiToken() : "");
     }
 
@@ -141,8 +145,8 @@ class ParsingStage {
 
     /**
      * Запускает этап «Парсинг» в фоновом потоке: парсинг КП выбранным способом
-     * и сохранение результата в kp-ratings.csv. Слот координатора занимается только
-     * после всех валидаций; освобождается в {@code finally} фонового потока.
+     * и сохранение результата в дамп kp-ratings-{userId}-{метод}.csv. Слот координатора
+     * занимается только после всех валидаций; освобождается в {@code finally} фонового потока.
      */
     String startParsing(Long kpUserId, String logDirectory, String parserType, String apiToken,
                         Integer totalRatings, Model model) {
@@ -169,6 +173,8 @@ class ParsingStage {
             log.error("startParsing: не указан ID пользователя КП");
             return ERROR;
         }
+        // Имя дампа kp-ratings-{userId}-{метод}.csv — для промежуточных и финальных сохранений.
+        logFile.setKpDumpName(kpUserId, type);
         boolean needsBrowser = PARSER_SELENIUM.equals(type);
         if (needsBrowser && authManager.getDriver() == null) {
             model.addAttribute(ERROR_MESSAGE, "Браузер КП не открыт — вернитесь назад и повторите подготовку");
@@ -231,7 +237,7 @@ class ParsingStage {
 
             processor.logKpWarnings(movies);
             dumpWriter.saveKpDumpSafely(movies);
-            log.info("Дамп сохранён: {} фильмов в kp-ratings.csv", movies.size());
+            log.info("Дамп сохранён: {} фильмов в {}", movies.size(), logFile.getKpDumpFileName());
 
             AppResult appResult = new AppResult();
             appResult.setTotalMovies(movies.size());

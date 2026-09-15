@@ -9,7 +9,9 @@ import ru.importer.notes.log.LogFileService;
 import ru.importer.notes.movie.ImportProgress;
 
 /**
- * Источник этапа «Проставление»: читает оценки из дампа kp-ratings.csv (способ {@code saved}).
+ * Источник этапа «Проставление»: читает оценки из выбранного дампа
+ * (kp-ratings-{userId}-{метод}.csv или старый kp-ratings.csv; выбор файла — в
+ * {@link LogFileService}, способ {@code saved}).
  * Возвращает ВСЕ строки дампа — пропуск обработанных делает ImdbNotesExporter,
  * чтобы дамп никогда не урезался и не терял ранее обработанные фильмы.
  */

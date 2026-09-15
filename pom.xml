@@ -13,7 +13,7 @@
 
     <groupId>ru.importer</groupId>
     <artifactId>notes</artifactId>
-    <version>1.0.3</version>
+    <version>1.0.4</version>
     <name>notes</name>
     <description>notes</description>
 
@@ -27,7 +27,7 @@
         <jpackage.type>msi</jpackage.type>
         <jpackage.name>KP IMDB Importer</jpackage.name>
         <jpackage.vendor>KP IMDB Importer</jpackage.vendor>
-        <jpackage.appVersion>1.0.0</jpackage.appVersion>
+        <jpackage.appVersion>${project.version}</jpackage.appVersion>
         <jsoup.version>1.18.1</jsoup.version>
         <bonigarcia.version>5.9.2</bonigarcia.version>
     </properties>

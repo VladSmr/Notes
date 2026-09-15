@@ -18,11 +18,11 @@ import ru.importer.notes.log.LogFileService;
 import ru.importer.notes.util.ErrorFormatter;
 
 /**
- * Этап «Проставление» (только IMDB, источник — kp-ratings.csv): подготовка браузера IMDB
- * и фоновое проставление оценок из дампа. Подготовка браузера сериализуется через
- * {@code browserLock} — общий с этапом «Парсинг» объект (см. {@link Processor}); слот
- * {@link ProcessCoordinator} занимается перед стартом и освобождается в {@code finally}
- * фонового потока.
+ * Этап «Проставление» (только IMDB, источник — дамп kp-ratings-{userId}-{метод}.csv или
+ * старый kp-ratings.csv): подготовка браузера IMDB и фоновое проставление оценок из дампа.
+ * Подготовка браузера сериализуется через {@code browserLock} — общий с этапом «Парсинг»
+ * объект (см. {@link Processor}); слот {@link ProcessCoordinator} занимается перед стартом
+ * и освобождается в {@code finally} фонового потока.
  */
 @Slf4j
 class ProsettingStage {
@@ -63,8 +63,9 @@ class ProsettingStage {
             return ERROR;
         }
         logFile.setLogDir(logDirectory);
-        if (!logFile.existsKpDump()) {
-            model.addAttribute(ERROR_MESSAGE, "kp-ratings.csv not found in the log directory");
+        if (!logFile.selectKpDumpFile()) {
+            model.addAttribute(ERROR_MESSAGE, "Дамп не найден: в директории нет файлов kp-ratings-*.csv "
+                    + "или kp-ratings.csv. Сначала выполните парсинг.");
             return ERROR;
         }
         synchronized (browserLock) {
@@ -90,9 +91,10 @@ class ProsettingStage {
             return ERROR;
         }
         logFile.setLogDir(logDirectory);
-        if (!logFile.existsKpDump()) {
-            model.addAttribute(ERROR_MESSAGE, "kp-ratings.csv not found in the log directory");
-            log.error("startProset: kp-ratings.csv не найден в {}", logDirectory);
+        if (!logFile.selectKpDumpFile()) {
+            model.addAttribute(ERROR_MESSAGE, "Дамп не найден: в директории нет файлов kp-ratings-*.csv "
+                    + "или kp-ratings.csv. Сначала выполните парсинг.");
+            log.error("startProset: дамп не найден в {}", logDirectory);
             return ERROR;
         }
         WebDriver driver = authManager.getDriver();
@@ -135,7 +137,7 @@ class ProsettingStage {
             if (movies.isEmpty()) {
                 log.error("Проставление остановлено: дамп пуст");
                 AppResult errorResult = new AppResult();
-                errorResult.setErrorMessage("kp-ratings.csv is empty or has no rows.");
+                errorResult.setErrorMessage("Дамп " + logFile.getKpDumpFileName() + " пуст или не содержит строк.");
                 progress.complete(STAGE_PROSET, errorResult);
                 return;
             }
@@ -143,7 +145,7 @@ class ProsettingStage {
             notesExporter.evaluate(movies, driver, progress, () -> dumpWriter.saveKpDumpSafely(imported));
 
             dumpWriter.saveKpDumpSafely(movies);
-            log.info("Итоговый дамп со статусами сохранён в kp-ratings.csv");
+            log.info("Итоговый дамп со статусами сохранён в {}", logFile.getKpDumpFileName());
 
             AppResult appResult = processor.buildResult(movies);
             progress.complete(STAGE_PROSET, appResult);

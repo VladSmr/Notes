@@ -19,7 +19,7 @@
 
     <div class="box">
         <p>Собрано оценок с Кинопоиска: <span class="stat-num" th:text="${result.totalMovies}">0</span></p>
-        <p>Результат сохранён в файл <code>kp-ratings.csv</code> (в указанной директории).</p>
+        <p>Результат сохранён в файл <code th:text="${kpDumpFile}">kp-ratings-{ID}-{метод}.csv</code> (в указанной директории).</p>
     </div>
 
     <p>

@@ -36,7 +36,7 @@
     </div>
 
     <div class="notice">
-        <strong>Важно:</strong> пока идёт парсинг, не открывайте и не редактируйте файл <code>kp-ratings.csv</code> вручную.
+        <strong>Важно:</strong> пока идёт парсинг, не открывайте и не редактируйте файл дампа <code th:text="${kpDumpFile}">kp-ratings-{ID}-{метод}.csv</code> вручную.
     </div>
 
     <form action="/notes/start-parsing" method="post">
@@ -48,7 +48,7 @@
         <button type="submit">Начать парсинг</button>
     </form>
 
-    <div class="hint">Парсинг соберёт оценки с Кинопоиска и сохранит их в kp-ratings.csv. IMDB на этом этапе не участвует.</div>
+    <div class="hint">Парсинг соберёт оценки с Кинопоиска и сохранит их в <code th:text="${kpDumpFile}">kp-ratings-{ID}-{метод}.csv</code>. IMDB на этом этапе не участвует.</div>
 </div>
 </body>
 </html>
