@@ -282,11 +282,13 @@ public class KpNotesImporter {
             try {
                 Document doc = parser.waitForPageLoad(driver);
 
-                if (page == 1) {
+                if (page == 1 && Boolean.parseBoolean(System.getProperty("kp.debugDump", "false"))) {
+                    // Дамп HTML первой страницы — диагностика формата КП; по умолчанию выключен,
+                    // чтобы не мусорить в рабочей директории (включается: -Dkp.debugDump=true).
                     try {
                         Files.write(Paths.get("kp-debug-page-1.html"),
                                     driver.getPageSource().getBytes(StandardCharsets.UTF_8));
-                        log.info("Дамп HTML первой страницы сохранён в kp-debug-page-1.html");
+                        log.debug("Флаг kp.debugDump активен — дамп HTML первой страницы сохранён в kp-debug-page-1.html");
                     } catch (IOException e) {
                         log.warn("Не удалось сохранить дамп HTML: {}", e.getMessage());
                     }

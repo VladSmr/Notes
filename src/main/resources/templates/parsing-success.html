@@ -1,11 +1,9 @@
 <!DOCTYPE html>
 <html lang="ru" xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
-    <title>Парсинг завершён</title>
+    <th:block th:replace="~{fragments/layout :: common-head('Парсинг завершён')}"></th:block>
     <style>
-        body { font-family: sans-serif; margin: 40px; }
-        .container { max-width: 700px; margin: 0 auto; }
+        .container { max-width: 700px; }
         .box { background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 20px 24px; margin: 20px 0; }
         .stat-num { font-size: 32px; font-weight: bold; }
         a.btn { display: inline-block; padding: 12px 28px; margin: 8px; background: #007bff; color: white; text-decoration: none; border-radius: 6px; }

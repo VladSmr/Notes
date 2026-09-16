@@ -1,11 +1,9 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
-    <title>Ошибка</title>
+    <th:block th:replace="~{fragments/layout :: common-head('Ошибка')}"></th:block>
     <style>
-        body { font-family: sans-serif; margin: 40px; }
-        .container { max-width: 500px; margin: 0 auto; text-align: center; }
+        .container { max-width: 500px; text-align: center; }
         .error-box { background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 8px; padding: 24px; margin: 16px 0; }
         .error-message { color: #721c24; font-size: 18px; }
         .error-details { margin: 16px 0 0 0; text-align: left; }

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- Общий блок управления импортом для importing-parsing.html и importing-proset.html:
+     кнопки «Пауза / Прекратить / Продолжить» и панель «нужен новый путь».
+     Обработчики кнопок навешиваются в static/import.js (по id, без inline onclick). -->
+<th:block th:fragment="controls">
+    <button id="pause-btn" style="margin-top: 24px; padding: 10px 24px; font-size: 16px; cursor: pointer; background: #ffc107; color: white; border: none; border-radius: 6px;">Пауза</button>
+    <button id="stop-btn" style="margin-top: 24px; padding: 10px 24px; font-size: 16px; cursor: pointer; background: #dc3545; color: white; border: none; border-radius: 6px;">Прекратить</button>
+    <button id="resume-btn" style="display: none; margin-top: 24px; padding: 10px 24px; font-size: 16px; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 6px;">Продолжить</button>
+
+    <div id="new-dir-panel" style="display: none; margin-top: 24px; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 8px; padding: 16px; text-align: left;">
+        <div style="font-weight: bold; color: #721c24; margin-bottom: 8px;">Не удалось записать дамп в текущую директорию (нет прав)</div>
+        <div style="color: #721c24; margin-bottom: 12px; font-size: 14px;">Укажите другую директорию, например <code>C:\Users\&lt;user&gt;\KP-IMDB-Importer</code>. Весь накопленный дамп будет скопирован туда автоматически.</div>
+        <div style="display: flex; gap: 8px;">
+            <input type="text" id="new-dir-input" placeholder="Например, C:\Users\&lt;user&gt;\KP-IMDB-Importer" style="flex: 1; padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px;">
+            <button id="change-dir-btn" style="padding: 10px 20px; font-size: 14px; cursor: pointer; background: #17a2b8; color: white; border: none; border-radius: 6px;">Сохранить в новый путь</button>
+        </div>
+        <div id="new-dir-error" style="color: #721c24; margin-top: 8px; font-size: 13px;"></div>
+    </div>
+</th:block>
+</body>
+</html>

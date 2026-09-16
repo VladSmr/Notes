@@ -1,11 +1,9 @@
 <!DOCTYPE html>
 <html lang="ru" xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
-    <title>Данные для импорта</title>
+    <th:block th:replace="~{fragments/layout :: common-head('Данные для импорта')}"></th:block>
     <style>
-        body { font-family: sans-serif; margin: 40px; }
-        .container { max-width: 520px; margin: 0 auto; }
+        .container { max-width: 520px; }
         label { display: block; margin-bottom: 8px; font-weight: bold; }
         input[type="number"], input[type="text"] { width: 100%; padding: 8px; margin-bottom: 16px; font-size: 16px; box-sizing: border-box; }
         .hint { color: #666; font-size: 14px; margin-bottom: 16px; }

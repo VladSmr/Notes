@@ -1,18 +1,9 @@
 <!DOCTYPE html>
 <html lang="ru" xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
-    <title>Импорт завершён</title>
+    <th:block th:replace="~{fragments/layout :: common-head('Импорт завершён')}"></th:block>
     <style>
-        body {
-            font-family: sans-serif;
-            margin: 40px;
-        }
-
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-        }
+        .container { max-width: 800px; }
 
         .summary {
             display: flex;

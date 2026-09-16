@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <!-- Общая «шапка» всех шаблонов: кодировка, <title> (передаётся параметром)
+         и общий файл стилей app.css. Уникальные стили страницы остаются
+         в её собственном блоке <style> сразу после этого блока. -->
+    <th:block th:fragment="common-head(title)">
+        <meta charset="UTF-8">
+        <title th:text="${title}">KP &rarr; IMDB Importer</title>
+        <link rel="stylesheet" th:href="@{/app.css}">
+    </th:block>
+</head>
+<body>
+</body>
+</html>

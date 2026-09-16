@@ -31,3 +31,8 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Локальные данные отладки/сессий — не выкладывать в репо ###
+chrome-profile/
+kp-debug-page-1.html
+*.csv.tmp

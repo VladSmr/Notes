@@ -1,0 +1,26 @@
+/*
+ * Общие стили всех шаблонов приложения (вынесены из дублированных inline-<style>).
+ * Подключаются через templates/fragments/layout.html (фрагмент common-head).
+ * Уникальные стили конкретной страницы остаются в её собственном блоке <style>
+ * и подключаются после этого файла — перекрывая общие правила при совпадении селекторов.
+ */
+
+body { font-family: sans-serif; margin: 40px; }
+.container { margin: 0 auto; }
+
+/* Предупреждающая плашка «Важно: ...» (отступы задаются на страницах). */
+.notice { background: #fff3cd; border: 1px solid #ffeeba; border-radius: 8px; padding: 10px 14px; font-size: 14px; color: #664d03; text-align: left; }
+
+/* --- Страницы хода импорта: importing-parsing.html, importing-proset.html --- */
+.progress-bar { width: 100%; height: 24px; background: #e9ecef; border-radius: 12px; overflow: hidden; margin: 24px 0; }
+.progress-fill { height: 100%; background: #007bff; width: 0%; transition: width 0.3s; border-radius: 12px; }
+.progress-fill.scanning { background: linear-gradient(90deg, #007bff, #66b0ff, #007bff); background-size: 200% 100%; animation: slide 1.5s linear infinite; }
+@keyframes slide { 0% { background-position: 0% 0; } 100% { background-position: 200% 0; } }
+.status { margin: 16px 0; color: #666; }
+.movie-name { font-size: 18px; margin: 8px 0; }
+.counter { font-size: 14px; color: #999; }
+.elapsed { font-size: 14px; color: #999; margin-top: 8px; }
+.log { margin-top: 24px; text-align: left; border-top: 1px solid #ddd; padding-top: 8px; }
+.log-title { font-size: 13px; color: #999; margin-bottom: 4px; }
+.log-window { max-height: 200px; overflow-y: auto; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; padding: 8px; font-family: monospace; font-size: 12px; color: #333; }
+.log-line { white-space: pre-wrap; word-break: break-all; line-height: 1.4; }
