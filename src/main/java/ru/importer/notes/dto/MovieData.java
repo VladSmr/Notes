@@ -29,6 +29,7 @@ public class MovieData {
         }
         return switch (label.trim()) {
             case "успешно" -> MovieStatus.RATED;
+            case "проставлено с оговоркой" -> MovieStatus.RATED_AMBIGUOUS;
             case "не найден" -> MovieStatus.NOT_FOUND;
             case "пропущено (уже стоит оценка)" -> MovieStatus.SKIPPED_SAME;
             case "руками (оценки отличаются)" -> MovieStatus.SKIPPED_DIFFERENT;
@@ -44,6 +45,7 @@ public class MovieData {
     public String getStatusLabel() {
         return switch (status) {
             case RATED -> "успешно";
+            case RATED_AMBIGUOUS -> "проставлено с оговоркой";
             case NOT_FOUND -> "не найден";
             case SKIPPED_SAME -> "пропущено (уже стоит оценка)";
             case SKIPPED_DIFFERENT -> "руками (оценки отличаются)";

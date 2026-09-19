@@ -78,6 +78,21 @@ public class MainController implements ErrorController {
         return "method-form";
     }
 
+    /**
+     * Возврат на форму данных парсинга (GET) — кнопки «Назад/Вернуться» после ошибок
+     * и на странице «нет оценок». Неизвестный/неприменимый способ → selenium.
+     */
+    @GetMapping("/method-form")
+    public String methodForm(@RequestParam(required = false) String parserType, Model model) {
+        String type = Processor.normalizeParserType(parserType);
+        if (type == null || "saved".equals(type)) {
+            type = "selenium";
+        }
+        model.addAttribute("parserType", type);
+        model.addAttribute("defaultLogDir", WorkingDir.defaultWorkingDir());
+        return "method-form";
+    }
+
     /** Шаг 2 (парсинг): отправка формы данных → подготовка парсинга (с проверкой перезаписи дампа). */
     @PostMapping("/submit")
     public String submit(InputData inputData, Model model) {

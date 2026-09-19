@@ -103,6 +103,8 @@ public class Processor {
         r.setTotalMovies(movies.size());
         r.setMovies(movies);
         r.setRated((int) movies.stream().filter(m -> m.getStatus() == MovieStatus.RATED).count());
+        r.setRatedAmbiguous((int) movies.stream()
+                                        .filter(m -> m.getStatus() == MovieStatus.RATED_AMBIGUOUS).count());
         r.setNotFound((int) movies.stream().filter(m -> m.getStatus() == MovieStatus.NOT_FOUND).count());
         r.setSkippedSame((int) movies.stream().filter(m -> m.getStatus() == MovieStatus.SKIPPED_SAME).count());
         r.setSkippedDifferent((int) movies.stream().filter(m -> m.getStatus() == MovieStatus.SKIPPED_DIFFERENT).count());

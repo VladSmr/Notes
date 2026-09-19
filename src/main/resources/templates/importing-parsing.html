@@ -7,7 +7,8 @@
         .notice { margin: 16px 0; }
     </style>
 </head>
-<body data-result-url="/notes/parsing-result" data-pause-message="Пауза после текущего шага...">
+<body data-result-url="/notes/parsing-result" data-pause-message="Пауза после текущего шага..."
+      th:attr="data-back-url=@{/method-form(parserType=${parserType})}">
 <div class="container">
     <h1>Парсинг оценок с Кинопоиска...</h1>
 

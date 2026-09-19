@@ -287,6 +287,19 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
         return result;
     }
 
+    /**
+     * Пробный запрос первой страницы оценок: проверяет, что токен действителен.
+     * 401/403 приходят как {@link RestClientResponseException} сразу (без ретраев),
+     * 429/5xx ретраятся как обычно.
+     */
+    @Override
+    public void validateToken(Long userId, String apiToken) {
+        if (apiToken == null || apiToken.isBlank()) {
+            throw new IllegalArgumentException("Не указан API-токен Кинопоиска");
+        }
+        fetchPage(userId, apiToken, 1);
+    }
+
     @Override
     public Integer fetchTotalRatings(Long userId, String apiToken) {
         if (apiToken == null || apiToken.isBlank()) {

@@ -314,6 +314,14 @@ public class ImdbNotesExporter {
         return noTitle || movie.getKpRating() <= 0;
     }
 
+    /**
+     * Статус успешной ставки: при неоднозначной выдаче поиска — «проставлено с оговоркой»
+     * ({@link MovieStatus#RATED_AMBIGUOUS}), иначе обычный {@link MovieStatus#RATED}.
+     */
+    static MovieStatus ratedStatus(boolean ambiguousChoice) {
+        return ambiguousChoice ? MovieStatus.RATED_AMBIGUOUS : MovieStatus.RATED;
+    }
+
     private String normalizeError(String msg) {
         if (msg == null) {
             return null;
@@ -331,13 +339,14 @@ public class ImdbNotesExporter {
      * по названию: оценку чужому фильму не ставим.
      */
     private void processMovie(MovieData movie, WebDriver driver, WebDriverWait wait) {
+        boolean ambiguousChoice = false;
         String imdbId = movie.getImdbId();
         if (imdbId == null || imdbId.isBlank()) {
-            search.searchAndOpen(driver, movie);
+            ambiguousChoice = search.searchAndOpen(driver, movie);
         } else if (!ImdbPageVerifier.isValidImdbIdFormat(imdbId)) {
             log.warn("imdbId '{}' невалидного формата (ожидался tt\\d+) — сбрасываю и ищу по названию", imdbId);
             movie.setImdbId(null);
-            search.searchAndOpen(driver, movie);
+            ambiguousChoice = search.searchAndOpen(driver, movie);
         } else {
             log.info("Открываю IMDB напрямую по id: {}", imdbId);
             driver.get("https://www.imdb.com/title/" + imdbId + "/");
@@ -345,12 +354,12 @@ public class ImdbNotesExporter {
                 log.warn("Страница {} не соответствует фильму '{}' — сбрасываю imdbId и ищу по названию",
                          imdbId, movie.getName());
                 movie.setImdbId(null);
-                search.searchAndOpen(driver, movie);
+                ambiguousChoice = search.searchAndOpen(driver, movie);
             }
         }
 
         if (movie.getStatus() == MovieStatus.NOT_FOUND) {
-            // Поиск не нашёл фильм (или результат неоднозначен) — оценку не ставим.
+            // Поиск не нашёл фильм или неоднозначный выбор не прошёл верификацию — оценку не ставим.
             return;
         }
 
@@ -374,8 +383,13 @@ public class ImdbNotesExporter {
         Integer confirmed = getExistingRating(driver);
         if (confirmed != null && confirmed == movie.getKpRating()) {
             movie.setImdbRating(confirmed);
-            movie.setStatus(MovieStatus.RATED);
-            log.info("Оценка {} подтверждена для {}", confirmed, movie.getName());
+            movie.setStatus(ratedStatus(ambiguousChoice));
+            if (ambiguousChoice) {
+                log.info("Оценка {} подтверждена для {} — проставлено с оговоркой "
+                                 + "(неоднозначная выдача поиска)", confirmed, movie.getName());
+            } else {
+                log.info("Оценка {} подтверждена для {}", confirmed, movie.getName());
+            }
         } else {
             movie.setImdbRating(movie.getKpRating());
             movie.setStatus(MovieStatus.ERROR);

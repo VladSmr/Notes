@@ -22,11 +22,26 @@ public class ImportProgress {
     private volatile String pausedStatus;
     /** Новый путь для дампа, введённый пользователем во время паузы «нужен новый путь». */
     private volatile String newLogDir;
-    private AppResult result;
+    private volatile AppResult result;
     /** Этап, который произвёл текущий результат (см. {@link #complete(String, AppResult)}). */
     private volatile String completedStage;
 
-    public void init(int total) {
+    /**
+     * Сбрасывает состояние перед новым этапом. Вызывается синхронно при старте (после
+     * занятия слота координатора), чтобы поздняя подписка страницы не переиграла финал
+     * предыдущего этапа.
+     */
+    public synchronized void begin() {
+        this.current = 0;
+        this.total = 0;
+        this.aborted = false;
+        this.paused = false;
+        this.pausedStatus = null;
+        this.result = null;
+        this.completedStage = null;
+    }
+
+    public synchronized void init(int total) {
         this.current = 0;
         this.total = total;
         this.aborted = false;
@@ -178,9 +193,32 @@ public class ImportProgress {
         return completedStage;
     }
 
+    /**
+     * Создаёт SSE-эмиттер (вынесено, чтобы тесты могли подменить эмиттер и проверить
+     * отложенную отдачу финального события).
+     */
+    protected SseEmitter createEmitter() {
+        return new SseEmitter(0L);
+    }
+
+    /**
+     * Подписка страницы на ход процесса. Если этап уже завершился до подключения
+     * (быстрый фатальный сбой), финальное событие {@code finished} переигрывается
+     * новому подписчику — иначе кнопки/статус зависли бы навсегда.
+     */
     public SseEmitter subscribe() {
-        SseEmitter emitter = new SseEmitter(0L);
-        emitters.add(emitter);
+        SseEmitter emitter = createEmitter();
+        synchronized (this) {
+            if (result != null) {
+                try {
+                    emitter.send(new ProgressEvent(null, current, total, null, "complete", true, result, false));
+                } catch (Exception ignored) {
+                }
+                emitter.complete();
+                return emitter;
+            }
+            emitters.add(emitter);
+        }
         emitter.onCompletion(() -> emitters.remove(emitter));
         emitter.onTimeout(() -> emitters.remove(emitter));
         if (paused) {

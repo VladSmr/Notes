@@ -124,6 +124,8 @@ class ProsettingStage {
             return ERROR;
         }
 
+        // Слот занят: сбрасываем состояние прогресса синхронно (см. ParsingStage.startParsing).
+        progress.begin();
         log.info("Запускаю проставление оценок на IMDB из дампа в директории: {}", logDirectory);
         new Thread(() -> runProsetAsync(driver, provider), "proset-thread").start();
         return "importing-proset";

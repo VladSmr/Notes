@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <th:block th:replace="~{fragments/layout :: common-head('Нет оценок')}"></th:block>
+    <style>
+        .container { max-width: 520px; text-align: center; }
+        .empty-box { background: #fff3cd; border: 1px solid #ffeeba; border-radius: 8px; padding: 24px; margin: 16px 0; color: #856404; }
+        a { display: inline-block; margin-top: 16px; padding: 10px 24px; background: #007bff; color: white; border-radius: 6px; text-decoration: none; }
+        a:hover { background: #0069d9; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Нет оценок</h1>
+
+    <div class="empty-box">
+        <p>У этого профиля нет оценок.</p>
+        <p>Профиль КП: <strong th:text="${kpUserId}">?</strong></p>
+    </div>
+
+    <a th:href="@{/method-form(parserType=${parserType})}">Назад</a>
+</div>
+</body>
+</html>

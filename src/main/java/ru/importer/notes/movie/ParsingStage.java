@@ -11,6 +11,7 @@ import static ru.importer.notes.movie.Processor.STAGE_PARSING;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ui.Model;
+import org.springframework.web.client.RestClientResponseException;
 import ru.importer.notes.dto.AppResult;
 import ru.importer.notes.dto.InputData;
 import ru.importer.notes.dto.MovieData;
@@ -19,6 +20,7 @@ import ru.importer.notes.imdb.auth.AuthManager;
 import ru.importer.notes.kp.KpRatingsProvider;
 import ru.importer.notes.log.LogFileService;
 import ru.importer.notes.util.ErrorFormatter;
+import ru.importer.notes.util.WorkingDir;
 
 /**
  * Этап «Парсинг» (только Кинопоиск -> дамп kp-ratings-{userId}-{метод}.csv): подготовка браузера КП,
@@ -120,8 +122,16 @@ class ParsingStage {
     private String openParsingBrowser(InputData inputData, String parserType, Model model) {
         KpRatingsProvider provider = processor.resolveProvider(parserType);
 
-        Integer realTotalRatings = null;
         boolean needsBrowser = PARSER_SELENIUM.equals(parserType);
+        if (!needsBrowser) {
+            // API: до показа страницы входа/старта убеждаемся пробным запросом, что токен
+            // действителен. 401/403 — фатальные (не ретраятся): возвращаем на форму данных.
+            if (!validateApiToken(provider, inputData, model)) {
+                return "method-form";
+            }
+        }
+
+        Integer realTotalRatings = null;
         if (needsBrowser) {
             synchronized (browserLock) {
                 if (authManager.getDriver() == null) {
@@ -132,15 +142,51 @@ class ParsingStage {
             }
         }
 
-        Integer totalRatings;
-        if (PARSER_SELENIUM.equals(parserType)) {
-            totalRatings = realTotalRatings;
-        } else {
-            totalRatings = provider.fetchTotalRatings(inputData.getKpUserId(), inputData.getApiToken());
+        Integer totalRatings = needsBrowser
+                ? realTotalRatings
+                : provider.fetchTotalRatings(inputData.getKpUserId(), inputData.getApiToken());
+
+        // Ноль оценок — стартовать нечего: страница «нет оценок» без кнопки «Начать парсинг».
+        if (totalRatings != null && totalRatings == 0) {
+            log.info("Парсинг: у профиля КП {} нет оценок (способ {})", inputData.getKpUserId(), parserType);
+            model.addAttribute("kpUserId", inputData.getKpUserId());
+            model.addAttribute("parserType", parserType);
+            return "no-ratings";
         }
+
         model.addAttribute("realTotalRatings", realTotalRatings);
         model.addAttribute("totalRatings", totalRatings);
         return "login-kp";
+    }
+
+    /**
+     * Пробный запрос для проверки токена API. При 401/403 кладёт понятное сообщение
+     * в модель и возвращает false (пользователь остаётся на форме данных, этап не стартует).
+     * Прочие ошибки (сеть и т.п.) старт не блокируют — они обрабатываются при парсинге.
+     */
+    private boolean validateApiToken(KpRatingsProvider provider, InputData inputData, Model model) {
+        try {
+            provider.validateToken(inputData.getKpUserId(), inputData.getApiToken());
+            return true;
+        } catch (RestClientResponseException e) {
+            int status = e.getStatusCode().value();
+            log.warn("Парсинг: предварительная проверка токена не прошла: HTTP {}", status);
+            model.addAttribute(ERROR_MESSAGE, apiTokenErrorMessage(status));
+            model.addAttribute("defaultLogDir", WorkingDir.defaultWorkingDir());
+            return false;
+        } catch (Exception e) {
+            log.warn("Парсинг: не удалось предварительно проверить токен ({}), продолжаю без проверки",
+                     e.getMessage());
+            return true;
+        }
+    }
+
+    /** Понятное пользователю сообщение о невалидном токене API. */
+    private static String apiTokenErrorMessage(int status) {
+        if (status == 401 || status == 403) {
+            return "Токен недействителен (" + status + "). Проверьте ключ КП";
+        }
+        return "Не удалось использовать токен (HTTP " + status + "). Проверьте ключ КП";
     }
 
     /**
@@ -188,6 +234,11 @@ class ParsingStage {
             log.error("startParsing: процесс уже идёт (этап: {})", coordinator.getStage());
             return ERROR;
         }
+
+        // Слот занят: сбрасываем состояние прогресса синхронно, чтобы поздняя подписка
+        // страницы не переиграла результат предыдущего этапа.
+        progress.begin();
+        model.addAttribute("parserType", type);
 
         long userId = kpUserId;
         log.info("Запускаю парсинг для пользователя КП {}, способ {}, лог-директория: {}",
@@ -253,7 +304,7 @@ class ParsingStage {
             } catch (Exception ignored) {
             }
             AppResult errorResult = new AppResult();
-            errorResult.setErrorMessage("Parsing failed: " + e.getMessage());
+            errorResult.setErrorMessage(fatalParsingMessage(e));
             errorResult.setErrorDetails(ErrorFormatter.format(e));
             progress.complete(STAGE_PARSING, errorResult);
         } finally {
@@ -263,6 +314,23 @@ class ParsingStage {
             }
             coordinator.finish();
         }
+    }
+
+    /**
+     * Человекочитаемое сообщение о фатальной ошибке этапа парсинга. Для 401/403/402
+     * API Кинопоиска — понятный текст вместо технической строки ответа.
+     */
+    private static String fatalParsingMessage(Exception e) {
+        if (e instanceof RestClientResponseException rce) {
+            int status = rce.getStatusCode().value();
+            if (status == 401 || status == 403) {
+                return "Токен недействителен (" + status + "). Проверьте ключ КП";
+            }
+            if (status == 402) {
+                return "Квота API Кинопоиска исчерпана (402). Проверьте тариф ключа.";
+            }
+        }
+        return "Parsing failed: " + e.getMessage();
     }
 
 }

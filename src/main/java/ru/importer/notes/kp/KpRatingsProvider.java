@@ -39,4 +39,17 @@ public interface KpRatingsProvider {
      */
     Integer fetchTotalRatings(Long userId, String apiToken);
 
+    /**
+     * Предварительная проверка доступа к источнику пробным запросом (первая страница
+     * оценок). Вызывается перед стартом парсинга в способе API. Реализации без токена
+     * (Selenium/CSV) ничего не делают.
+     *
+     * @param userId   id профиля КП
+     * @param apiToken API-токен (для API-провайдера обязателен)
+     * @throws org.springframework.web.client.RestClientResponseException при 401/403
+     *         (невалидный/запрещённый токен) — ошибка не ретраится
+     */
+    default void validateToken(Long userId, String apiToken) {
+    }
+
 }

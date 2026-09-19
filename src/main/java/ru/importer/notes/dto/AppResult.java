@@ -15,6 +15,8 @@ public class AppResult {
     private List<MovieData> movies;
     private int notFound;
     private int rated;
+    /** Оценки, проставленные при неоднозначной выдаче поиска («проставлено с оговоркой»). */
+    private int ratedAmbiguous;
     private int skippedDifferent;
     private int skippedSame;
     private int totalMovies;

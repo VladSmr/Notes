@@ -15,7 +15,9 @@ import ru.importer.notes.dto.MovieStatus;
 import ru.importer.notes.movie.ImportProgress;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doThrow;
@@ -78,11 +80,12 @@ class ImdbSearchStrategyTest extends ImdbTestSupport {
     }
 
     @Test
-    void evaluate_searchWithoutYear_twoExactTitleMatches_notFoundWithoutRating() {
-        // ≥2 точных совпадений названия («Оно» 1990/2017) → неоднозначно → NOT_FOUND
-        // без ставки и без imdb_id — защита от одноимённого ремейка.
+    void evaluate_searchWithoutYear_twoExactTitleMatches_verificationFails_notFound() {
+        // ≥2 точных совпадений, год 0 (не различает): берём первый по релевантности
+        // и прогоняем полную верификацию. У мок-страницы нет <title> — верификация
+        // не проходит → NOT_FOUND без ставки и без imdb_id.
         MovieData movie = completeMovie();
-        movie.setYear(0); // поиск без года
+        movie.setYear(0); // поиск без года, дизамбигуация по году недоступна
         movie.setName("Оно");
         movie.setNameEn("Оно");
         List<MovieData> movies = new ArrayList<>(List.of(movie));
@@ -99,9 +102,112 @@ class ImdbSearchStrategyTest extends ImdbTestSupport {
         exporter.evaluate(movies, driver, new ImportProgress(), () -> { });
 
         assertEquals(MovieStatus.NOT_FOUND, movie.getStatus());
-        assertNull(movie.getImdbId(), "imdb_id при неоднозначности не записывается");
-        // На страницы фильмов не переходили — оценку ставить некому.
-        verify(driver, never()).get(org.mockito.ArgumentMatchers.contains("/title/"));
+        assertNull(movie.getImdbId(), "imdb_id при непрошедшей верификации не записывается");
+        // Первый по релевантности матч (Оно 1990) был открыт именно для верификации.
+        verify(driver, atLeastOnce()).get(org.mockito.ArgumentMatchers.contains("/title/tt0091986"));
+    }
+
+    // ------------------------------------------------------------------
+    // Смягчённая анти-неоднозначность: дизамбигуация по году / первый матч
+    // ------------------------------------------------------------------
+
+    @Test
+    void searchAndOpen_threeExactMatches_yearDistinguishes_choosesYearMatchAndFlagsAmbiguous() {
+        // Midsommar 2019: три точных совпадения названия; год ±1 выделяет ровно одно
+        // («Midsommar (2019)») — выбирается оно и помечается как неоднозначное.
+        MovieData movie = midsommar();
+        WebDriver driver = mockDriver(List.of(
+                result("Midsommar (2005)", "/title/tt1111111/"),
+                result("Midsommar (2019)", "/title/tt2222222/"),
+                result("Midsommar (2023)", "/title/tt3333333/")));
+        when(driver.getPageSource()).thenReturn(pageWithJsonLd(
+                "{\"@type\":\"Movie\",\"name\":\"Midsommar\"}"));
+        when(driver.getTitle()).thenReturn("Midsommar (2019) - IMDb");
+
+        boolean ambiguous = search.searchAndOpen(driver, movie);
+
+        assertTrue(ambiguous, "выбор из нескольких совпадений — неоднозначный");
+        assertEquals("tt2222222", movie.getImdbId(), "год ±1 выделил единственный матч");
+        assertEquals(MovieStatus.PENDING, movie.getStatus(), "верификация пройдена — статус не сброшен");
+    }
+
+    @Test
+    void searchAndOpen_threeExactMatches_yearDoesNotDistinguish_choosesFirstAndFlagsAmbiguous() {
+        // Год не различает (два матча с годом 2019): берём первый по релевантности
+        // (порядок IMDb) и помечаем неоднозначным.
+        MovieData movie = midsommar();
+        WebDriver driver = mockDriver(List.of(
+                result("Midsommar (2019)", "/title/tt1111111/?ref_=fn_t_1"),
+                result("Midsommar (2019)", "/title/tt2222222/?ref_=fn_t_2"),
+                result("Midsommar (2019)", "/title/tt3333333/?ref_=fn_t_3")));
+        when(driver.getPageSource()).thenReturn(pageWithJsonLd(
+                "{\"@type\":\"Movie\",\"name\":\"Midsommar\"}"));
+        when(driver.getTitle()).thenReturn("Midsommar (2019) - IMDb");
+
+        boolean ambiguous = search.searchAndOpen(driver, movie);
+
+        assertTrue(ambiguous, "выбор из нескольких совпадений — неоднозначный");
+        assertEquals("tt1111111", movie.getImdbId(), "год не различает — берём первый матч");
+    }
+
+    @Test
+    void searchAndOpen_ambiguousChoice_verificationFails_notFoundWithoutImdbId() {
+        // Неоднозначный выбор, но открытая страница — не фильм (@type PodcastEpisode):
+        // полная верификация отклоняет, imdb_id не записывается, NOT_FOUND.
+        MovieData movie = midsommar();
+        WebDriver driver = mockDriver(List.of(
+                result("Midsommar (2019)", "/title/tt12624460/"),
+                result("Midsommar (2019)", "/title/tt10597316/")));
+        when(driver.getTitle()).thenReturn("Midsommar (2019) - IMDb");
+        when(driver.getPageSource()).thenReturn(pageWithJsonLd(
+                "{\"@type\":\"PodcastEpisode\",\"name\":\"Midsommar (2019)\"}"));
+
+        boolean ambiguous = search.searchAndOpen(driver, movie);
+
+        assertFalse(ambiguous, "верификация не пройдена — не считаем ставку с оговоркой");
+        assertNull(movie.getImdbId(), "imdb_id нефильма не записывается");
+        assertEquals(MovieStatus.NOT_FOUND, movie.getStatus());
+    }
+
+    @Test
+    void searchAndOpen_singleExactMatch_notAmbiguous() {
+        // Единственный точный матч — обычный путь без флага неоднозначности.
+        MovieData movie = midsommar();
+        WebDriver driver = mockDriver(List.of(
+                result("Midsommar (2019)", "/title/tt8772262/")));
+        when(driver.getPageSource()).thenReturn(pageWithJsonLd(
+                "{\"@type\":\"Movie\",\"name\":\"Midsommar\"}"));
+        when(driver.getTitle()).thenReturn("Midsommar (2019) - IMDb");
+
+        boolean ambiguous = search.searchAndOpen(driver, movie);
+
+        assertFalse(ambiguous, "один точный матч — не неоднозначность");
+        assertEquals("tt8772262", movie.getImdbId());
+    }
+
+    @Test
+    void ratedStatus_mapsAmbiguityFlag() {
+        // Успешная ставка из неоднозначного выбора → RATED_AMBIGUOUS, иначе RATED.
+        assertEquals(MovieStatus.RATED_AMBIGUOUS, ImdbNotesExporter.ratedStatus(true));
+        assertEquals(MovieStatus.RATED, ImdbNotesExporter.ratedStatus(false));
+    }
+
+    /** Фильм Midsommar 2019 для тестов дизамбигуации (все три названия — «Midsommar»). */
+    private MovieData midsommar() {
+        MovieData movie = completeMovie();
+        movie.setName("Midsommar");
+        movie.setNameOriginal(null);
+        movie.setNameEn("Midsommar");
+        movie.setYear(2019);
+        return movie;
+    }
+
+    /** Мок результата выдачи поиска с заданным текстом и href. */
+    private WebElement result(String text, String href) {
+        WebElement el = mock(WebElement.class);
+        when(el.getText()).thenReturn(text);
+        when(el.getAttribute("href")).thenReturn(href);
+        return el;
     }
 
     @Test

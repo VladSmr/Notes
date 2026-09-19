@@ -151,9 +151,31 @@ class CsvKpRatingsProviderTest {
     }
 
     @Test
+    void fetchRatings_shouldRoundTripRatedAmbiguousStatus() {
+        // «Проставлено с оговоркой»: неоднозначный выбор при ставке. Статус завершённый —
+        // при повторном прогоне строка не ретраится, лейбл читается обратно.
+        logFile.saveKpDump("Midsommar;;Midsommar;2019;8;123;tt8772262;проставлено с оговоркой;");
+
+        List<MovieData> movies = provider.fetchRatings(1L, null, null);
+        assertEquals(1, movies.size());
+        assertEquals(MovieStatus.RATED_AMBIGUOUS, movies.get(0).getStatus());
+        assertEquals("проставлено с оговоркой", movies.get(0).getStatusLabel());
+        assertTrue(movies.get(0).getStatus().isDone(), "строка done — повторно не ретраится");
+    }
+
+    @Test
+    void parseStatusLabel_shouldMapRatedAmbiguousLabel() {
+        assertEquals(MovieStatus.RATED_AMBIGUOUS, MovieData.parseStatusLabel("проставлено с оговоркой"));
+        MovieData movie = new MovieData();
+        movie.setStatus(MovieStatus.RATED_AMBIGUOUS);
+        assertEquals("проставлено с оговоркой", movie.getStatusLabel());
+    }
+
+    @Test
     void movieStatus_isDone_singleSourceOfTruth() {
         // «Уже обработан» — единая логика в MovieStatus.isDone(), наборы статусов не расходятся.
         assertTrue(MovieStatus.RATED.isDone());
+        assertTrue(MovieStatus.RATED_AMBIGUOUS.isDone(), "«проставлено с оговоркой» — завершённый статус");
         assertTrue(MovieStatus.SKIPPED_SAME.isDone());
         assertTrue(MovieStatus.SKIPPED_DIFFERENT.isDone());
         assertTrue(MovieStatus.INCOMPLETE_DATA.isDone());

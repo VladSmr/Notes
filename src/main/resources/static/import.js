@@ -16,6 +16,41 @@
         var source = new EventSource('/notes/progress');
         var logSource = new EventSource('/notes/log');
 
+        // Фатальный финал: красный блок «Завершено с ошибкой: <текст>» + кнопка «Вернуться».
+        // Адрес возврата — data-back-url на <body> (form/выбор способа), иначе /notes/main.
+        function showFatalError(message) {
+            var container = document.querySelector('.container') || document.body;
+            ['pause-btn', 'stop-btn', 'resume-btn', 'new-dir-panel'].forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el) {
+                    el.style.display = 'none';
+                }
+            });
+            var statusText = document.getElementById('status-text');
+            if (statusText) {
+                statusText.textContent = 'Завершено с ошибкой.';
+            }
+            var box = document.getElementById('fatal-error');
+            if (!box) {
+                box = document.createElement('div');
+                box.id = 'fatal-error';
+                box.style.cssText = 'margin: 24px 0; background: #f8d7da; border: 1px solid #f5c6cb;'
+                    + ' border-radius: 8px; padding: 16px; color: #721c24; text-align: left;';
+                container.appendChild(box);
+            }
+            box.textContent = '';
+            var title = document.createElement('div');
+            title.style.cssText = 'font-weight: bold; margin-bottom: 12px;';
+            title.textContent = 'Завершено с ошибкой: ' + message;
+            box.appendChild(title);
+            var back = document.createElement('a');
+            back.href = document.body.getAttribute('data-back-url') || '/notes/main';
+            back.textContent = 'Вернуться';
+            back.style.cssText = 'display: inline-block; padding: 10px 24px; background: #007bff;'
+                + ' color: #fff; border-radius: 6px; text-decoration: none;';
+            box.appendChild(back);
+        }
+
         logSource.onmessage = function (event) {
             var win = document.getElementById('log-window');
             var line = document.createElement('div');
@@ -37,9 +72,14 @@
 
             if (data.finished) {
                 source.close();
-                // Страница результата (/notes/parsing-result или /notes/result) сама
-                // различит ошибку и успех (по result.errorMessage) и передаст на
-                // страницу полный лог ошибки (errorDetails).
+                // Фатальный финал: не уводим на страницу результата, а явно показываем
+                // красный блок с текстом ошибки и кнопкой возврата (см. showFatalError).
+                if (data.result && data.result.errorMessage) {
+                    showFatalError(data.result.errorMessage);
+                    return;
+                }
+                // Успешный финал: страница результата (/notes/parsing-result или
+                // /notes/result) сама отобразит итог.
                 window.location.href = resultUrl;
                 return;
             }

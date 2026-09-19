@@ -24,6 +24,11 @@
             border: 1px solid #c3e6cb;
         }
 
+        .stat.rated-ambiguous {
+            background: #fff8e1;
+            border: 1px solid #ffe0a3;
+        }
+
         .stat.not-found {
             background: #fff3cd;
             border: 1px solid #ffeeba;
@@ -70,6 +75,10 @@
             color: #28a745;
         }
 
+        .status-RATED_AMBIGUOUS {
+            color: #b8860b;
+        }
+
         .status-NOT_FOUND {
             color: #856404;
         }
@@ -114,6 +123,42 @@
             text-align: left;
         }
 
+        /* Прокручиваемый блок со списком фильмов (как лог-окно в app.css). */
+        .movie-list-scroll {
+            max-height: 500px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+        }
+
+        .movie-list-scroll table {
+            margin-top: 0;
+        }
+
+        /* Шапка таблицы остаётся видимой при прокрутке списка. */
+        .movie-list-scroll thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .to-top {
+            display: block;
+            margin: 16px auto 0;
+            padding: 8px 20px;
+            background: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .to-top:hover {
+            background: #0069d9;
+        }
+
         h2 {
             margin-top: 32px;
         }
@@ -131,6 +176,10 @@
         <div class="stat rated">
             <span class="stat-num" th:text="${result.rated}">0</span>
             Оценка проставлена
+        </div>
+        <div class="stat rated-ambiguous">
+            <span class="stat-num" th:text="${result.ratedAmbiguous}">0</span>
+            Проставлено с оговоркой
         </div>
         <div class="stat not-found">
             <span class="stat-num" th:text="${result.notFound}">0</span>
@@ -161,6 +210,7 @@
     </div>
 
     <h2>Детали</h2>
+    <div class="movie-list-scroll">
     <table>
         <thead>
         <tr>
@@ -195,6 +245,10 @@
         </tr>
         </tbody>
     </table>
+    </div>
+
+    <button type="button" class="to-top"
+            onclick="window.scrollTo({ top: 0, behavior: 'smooth' });">Наверх</button>
 
     <p style="margin-top: 24px;">
         <a href="/notes/">На главную</a>

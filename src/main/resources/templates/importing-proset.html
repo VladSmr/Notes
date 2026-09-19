@@ -13,7 +13,7 @@
         .notice { margin: 16px 0; }
     </style>
 </head>
-<body data-result-url="/notes/result" data-pause-message="Пауза после текущего фильма...">
+<body data-result-url="/notes/result" data-pause-message="Пауза после текущего фильма..." data-back-url="/notes/proset">
 <div class="container">
     <h1>Проставление оценок на IMDB...</h1>
 
@@ -75,9 +75,11 @@
     function getStatusText(s) {
         var map = {
             'RATED': 'Оценка проставлена',
+            'RATED_AMBIGUOUS': 'Проставлено с оговоркой',
             'NOT_FOUND': 'Не найдено на IMDB',
             'SKIPPED_SAME': 'Пропущено (та же оценка)',
             'SKIPPED_DIFFERENT': 'Пропущено (разные оценки)',
+            'INCOMPLETE_DATA': 'Неполные данные',
             'ERROR': 'Ошибка',
             'complete': 'Завершено'
         };
