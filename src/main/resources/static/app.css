@@ -24,3 +24,5 @@ body { font-family: sans-serif; margin: 40px; }
 .log-title { font-size: 13px; color: #999; margin-bottom: 4px; }
 .log-window { max-height: 200px; overflow-y: auto; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; padding: 8px; font-family: monospace; font-size: 12px; color: #333; }
 .log-line { white-space: pre-wrap; word-break: break-all; line-height: 1.4; }
+/* Компактный бейдж способа парсинга (importing-parsing.html). */
+.method-badge { display: inline-block; margin: 4px 0 0; padding: 3px 12px; border-radius: 12px; font-size: 13px; background: #e7f1ff; color: #0056b3; border: 1px solid #b6d4fe; }

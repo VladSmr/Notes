@@ -12,6 +12,9 @@
 <div class="container">
     <h1>Парсинг оценок с Кинопоиска...</h1>
 
+    <div class="method-badge" th:if="${parserType == 'api'}">Способ: API Кинопоиска</div>
+    <div class="method-badge" th:if="${parserType == 'selenium'}">Способ: браузер (Selenium)</div>
+
     <div class="progress-bar">
         <div class="progress-fill" id="progress-fill"></div>
     </div>
