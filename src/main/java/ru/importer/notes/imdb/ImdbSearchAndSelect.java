@@ -7,13 +7,14 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
-import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.WebElement;
 import ru.importer.notes.dto.MovieData;
 import ru.importer.notes.dto.MovieStatus;
 import ru.importer.notes.kp.KpYearValidator;
+import ru.importer.notes.util.ThreadSleepUtil;
 
 /**
  * Поиск в выдаче IMDB: построение запроса, выбор результата в find-выдаче и переход на страницу тайтла.
@@ -112,14 +113,6 @@ class ImdbSearchAndSelect {
                    .trim();
     }
 
-    private String getHref(WebElement el) {
-        try {
-            return el.getAttribute("href");
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
     /**
      * Год из текста результата выдачи IMDB (последняя группа в скобках, напр. «(2019)»):
      * используется для дизамбигуации одноимённых тайтлов. Скобок/года нет — 0.
@@ -149,6 +142,14 @@ class ImdbSearchAndSelect {
             }
         }
         return 0;
+    }
+
+    private String getHref(WebElement el) {
+        try {
+            return el.getAttribute("href");
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**
@@ -213,7 +214,7 @@ class ImdbSearchAndSelect {
      * Поиск по названию и переход на найденную страницу (клик не используется — «element click intercepted»).
      *
      * @return true, если выбор был неоднозначным (≥2 точных совпадений названия) — вызывающий
-     *         код при успешной ставке помечает результат «проставлено с оговоркой»; false — обычный путь
+     * код при успешной ставке помечает результат «проставлено с оговоркой»; false — обычный путь
      */
     boolean searchAndOpen(WebDriver driver, MovieData movie) {
         String query = buildSearchQuery(movie);
@@ -273,7 +274,7 @@ class ImdbSearchAndSelect {
     private SearchOutcome selectSearchResult(WebDriver driver, MovieData movie) {
         List<WebElement> results = collectTitleLinks(driver);
         if (results.isEmpty()) {
-            ImdbNotesExporter.sleepUninterruptibly(2000);
+            ThreadSleepUtil.sleepUninterruptibly(2000);
             results = collectTitleLinks(driver);
         }
         if (results.isEmpty()) {

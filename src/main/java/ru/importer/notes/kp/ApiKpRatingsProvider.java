@@ -18,6 +18,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import ru.importer.notes.dto.MovieData;
 import ru.importer.notes.movie.ImportProgress;
+import ru.importer.notes.util.ThreadSleepUtil;
 
 /**
  * Парсинг оценок КП через kinopoiskapiunofficial.tech API. Токен обязателен.
@@ -167,7 +168,7 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
             log.warn("API: не удалось получить {} (попытка {}/{}): {}, повтор через {}мс",
                      label, attempt, MAX_ATTEMPTS, last.getMessage(), backoffMs);
             if (attempt < MAX_ATTEMPTS) {
-                sleepUninterruptibly(backoffMs);
+                ThreadSleepUtil.sleepUninterruptibly(backoffMs);
             }
         }
         throw new RuntimeException("Не удалось получить " + label + " с API Кинопоиска", last);
@@ -287,19 +288,6 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
         return result;
     }
 
-    /**
-     * Пробный запрос первой страницы оценок: проверяет, что токен действителен.
-     * 401/403 приходят как {@link RestClientResponseException} сразу (без ретраев),
-     * 429/5xx ретраятся как обычно.
-     */
-    @Override
-    public void validateToken(Long userId, String apiToken) {
-        if (apiToken == null || apiToken.isBlank()) {
-            throw new IllegalArgumentException("Не указан API-токен Кинопоиска");
-        }
-        fetchPage(userId, apiToken, 1);
-    }
-
     @Override
     public Integer fetchTotalRatings(Long userId, String apiToken) {
         if (apiToken == null || apiToken.isBlank()) {
@@ -312,6 +300,19 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
             log.warn("API: не удалось получить общее количество оценок: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Пробный запрос первой страницы оценок: проверяет, что токен действителен.
+     * 401/403 приходят как {@link RestClientResponseException} сразу (без ретраев),
+     * 429/5xx ретраятся как обычно.
+     */
+    @Override
+    public void validateToken(Long userId, String apiToken) {
+        if (apiToken == null || apiToken.isBlank()) {
+            throw new IllegalArgumentException("Не указан API-токен Кинопоиска");
+        }
+        fetchPage(userId, apiToken, 1);
     }
 
     private boolean isCis(JsonNode countries) {
@@ -388,18 +389,10 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
         if (lastRequestNanos != 0) {
             long elapsed = now - lastRequestNanos;
             if (elapsed < MIN_REQUEST_INTERVAL_NANOS) {
-                sleepUninterruptibly((MIN_REQUEST_INTERVAL_NANOS - elapsed) / 1_000_000L + 1);
+                ThreadSleepUtil.sleepUninterruptibly((MIN_REQUEST_INTERVAL_NANOS - elapsed) / 1_000_000L + 1);
             }
         }
         lastRequestNanos = System.nanoTime();
-    }
-
-    private void sleepUninterruptibly(long millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
     }
 
 }

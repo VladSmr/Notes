@@ -11,16 +11,17 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
-import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.stereotype.Service;
 import ru.importer.notes.dto.MovieData;
 import ru.importer.notes.dto.MovieStatus;
 import ru.importer.notes.movie.ImportProgress;
 import ru.importer.notes.util.ErrorFormatter;
+import ru.importer.notes.util.ThreadSleepUtil;
 
 @Slf4j
 @Service
@@ -167,6 +168,14 @@ public class ImdbNotesExporter {
     }
 
     /**
+     * Статус успешной ставки: при неоднозначной выдаче поиска — «проставлено с оговоркой»
+     * ({@link MovieStatus#RATED_AMBIGUOUS}), иначе обычный {@link MovieStatus#RATED}.
+     */
+    static MovieStatus ratedStatus(boolean ambiguousChoice) {
+        return ambiguousChoice ? MovieStatus.RATED_AMBIGUOUS : MovieStatus.RATED;
+    }
+
+    /**
      * Сбрасывает imdbId → PENDING у фильмов с одинаковым валидным imdb_id ({@code tt\d+}):
      * это глюк API КП — оценка могла уйти не тому тайтлу (известный кейс: подкаст-эпизод IMDB).
      * Исключение: нормализованные названия у всех совладельцев id совпадают — легитимная
@@ -192,14 +201,6 @@ public class ImdbNotesExporter {
             }
         }
         return reset;
-    }
-
-    static void sleepUninterruptibly(long millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
     }
 
     /**
@@ -314,14 +315,6 @@ public class ImdbNotesExporter {
         return noTitle || movie.getKpRating() <= 0;
     }
 
-    /**
-     * Статус успешной ставки: при неоднозначной выдаче поиска — «проставлено с оговоркой»
-     * ({@link MovieStatus#RATED_AMBIGUOUS}), иначе обычный {@link MovieStatus#RATED}.
-     */
-    static MovieStatus ratedStatus(boolean ambiguousChoice) {
-        return ambiguousChoice ? MovieStatus.RATED_AMBIGUOUS : MovieStatus.RATED;
-    }
-
     private String normalizeError(String msg) {
         if (msg == null) {
             return null;
@@ -402,7 +395,7 @@ public class ImdbNotesExporter {
 
     private void sleepRandom() {
         int seconds = ThreadLocalRandom.current().nextInt(1, 3);
-        sleepUninterruptibly(seconds * 1000L);
+        ThreadSleepUtil.sleepUninterruptibly(seconds * 1000L);
     }
 
     private String truncateError(String msg) {

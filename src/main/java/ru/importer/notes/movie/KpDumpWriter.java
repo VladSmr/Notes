@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import ru.importer.notes.dto.MovieData;
 import ru.importer.notes.dto.MovieStatus;
 import ru.importer.notes.log.LogFileService;
+import ru.importer.notes.util.ThreadSleepUtil;
 
 /**
  * Запись дампа оценок КП (имя файла задаёт {@link LogFileService}: kp-ratings-{userId}-{метод}.csv):
@@ -175,7 +176,7 @@ class KpDumpWriter {
                 long delay = attempt == 1 ? 5000 : 30000;
                 log.warn("Не удалось сохранить {} (попытка {}): {} — повтор через {} с",
                          logFile.getKpDumpFileName(), attempt, e.getMessage(), delay / 1000);
-                sleepUninterruptibly(delay);
+                ThreadSleepUtil.sleepUninterruptibly(delay);
                 if (++attempt > 2) {
                     log.warn("{} всё ещё занят. Процесс на паузе: закройте файл и нажмите «Продолжить».",
                              logFile.getKpDumpFileName());
@@ -187,14 +188,6 @@ class KpDumpWriter {
                     justResumed = true;
                 }
             }
-        }
-    }
-
-    private void sleepUninterruptibly(long millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
         }
     }
 
