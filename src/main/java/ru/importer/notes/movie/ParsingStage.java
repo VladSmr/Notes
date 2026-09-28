@@ -264,14 +264,18 @@ class ParsingStage {
             log.info("=== Парсинг начат ===");
             log.info("Пользователь КП: {}, способ: {}", kpUserId, provider.getKey());
 
-            movies = provider.fetchRatings(kpUserId, apiToken, progress, dumpWriter::saveKpDumpSafely);
+            movies = provider.fetchRatings(kpUserId, apiToken, progress, dumpWriter::saveKpDumpSafelyForParsing);
             log.info("Загружено фильмов: {}", movies.size());
 
+            // Считаем «пусто»/totalMovies по ОТФИЛЬТРОВАННОМУ списку — консистентно с дампом:
+            // строки-не-фильмы (без названия/оценки/kp_id) в дамп не пишутся и не считаются.
+            List<MovieData> dumpable = dumpWriter.filterDumpableForParsing(movies);
+
             if (PARSER_API.equals(provider.getKey())) {
-                processor.logApiVsReal(movies.size());
+                processor.logApiVsReal(dumpable.size());
             }
 
-            if (movies.isEmpty()) {
+            if (dumpable.isEmpty()) {
                 log.error("Парсинг остановлен: оценок не найдено");
                 AppResult errorResult = new AppResult();
                 errorResult.setErrorMessage("No ratings found for KP user " + kpUserId);
@@ -286,20 +290,20 @@ class ParsingStage {
                 return;
             }
 
-            processor.logKpWarnings(movies);
-            dumpWriter.saveKpDumpSafely(movies);
-            log.info("Дамп сохранён: {} фильмов в {}", movies.size(), logFile.getKpDumpFileName());
+            processor.logKpWarnings(dumpable);
+            dumpWriter.saveKpDumpSafely(dumpable);
+            log.info("Дамп сохранён: {} фильмов в {}", dumpable.size(), logFile.getKpDumpFileName());
 
             AppResult appResult = new AppResult();
-            appResult.setTotalMovies(movies.size());
-            appResult.setMovies(movies);
+            appResult.setTotalMovies(dumpable.size());
+            appResult.setMovies(dumpable);
             progress.complete(STAGE_PARSING, appResult);
             log.info("=== Парсинг завершён ===");
         } catch (Exception e) {
             log.error("Парсинг провалился: {}", e.getMessage(), e);
             try {
                 if (movies != null && !movies.isEmpty()) {
-                    dumpWriter.saveKpDumpSafely(movies);
+                    dumpWriter.saveKpDumpSafelyForParsing(movies);
                 }
             } catch (Exception ignored) {
             }

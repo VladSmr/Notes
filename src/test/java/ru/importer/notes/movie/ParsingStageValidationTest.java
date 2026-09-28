@@ -150,6 +150,8 @@ class ParsingStageValidationTest {
         KpRatingsProvider api = providerWithKey("api");
         MovieData movie = new MovieData();
         movie.setKpId(1L);
+        movie.setName("Фильм");
+        movie.setKpRating(5);
         when(api.fetchRatings(eq(7L), eq("token"), any(ImportProgress.class), any()))
                 .thenReturn(List.of(movie));
         ImportProgress progress = new ImportProgress();

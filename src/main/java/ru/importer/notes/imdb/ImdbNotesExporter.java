@@ -31,7 +31,17 @@ public class ImdbNotesExporter {
     private static final Duration PAGE_WAIT = Duration.ofSeconds(10);
     private final ImdbRatingClicker clicker = new ImdbRatingClicker();
     private final ImdbPageVerifier verifier = new ImdbPageVerifier();
-    private final ImdbSearchAndSelect search = new ImdbSearchAndSelect(verifier);
+    private final ImdbSearchAndSelect search;
+
+    /** Продовый конструктор: поиск с боевым таймаутом готовности выдачи. */
+    public ImdbNotesExporter() {
+        this.search = new ImdbSearchAndSelect(verifier);
+    }
+
+    /** Тестовый конструктор: подмена поиска (например, короткий таймаут ожидания выдачи). */
+    ImdbNotesExporter(ImdbSearchAndSelect search) {
+        this.search = search;
+    }
 
     /**
      * Непустые названия фильма (русское, оригинальное, английское).

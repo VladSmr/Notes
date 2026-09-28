@@ -48,7 +48,8 @@ class ImdbPageVerificationTest extends ImdbTestSupport {
 
         verify(driver, times(1)).get("https://www.imdb.com/title/tt0118767/");
         assertNull(movie.getImdbId(), "imdbId чужого фильма должен быть сброшен");
-        verify(driver).get(org.mockito.ArgumentMatchers.contains("/find/?q="));
+        // Поиск пуст: навигация + один повтор готовности выдачи (обе на find-URL).
+        verify(driver, atLeastOnce()).get(org.mockito.ArgumentMatchers.contains("/find/?q="));
         assertEquals(MovieStatus.NOT_FOUND, movie.getStatus(),
                 "поиск пуст — NOT_FOUND: оценка по чужому id не ставилась");
     }
@@ -66,7 +67,8 @@ class ImdbPageVerificationTest extends ImdbTestSupport {
         exporter.evaluate(movies, driver, new ImportProgress(), () -> { });
 
         assertNull(movie.getImdbId(), "imdbId с чужим годом должен быть сброшен");
-        verify(driver).get(org.mockito.ArgumentMatchers.contains("/find/?q="));
+        // Поиск пуст: навигация + один повтор готовности выдачи (обе на find-URL).
+        verify(driver, atLeastOnce()).get(org.mockito.ArgumentMatchers.contains("/find/?q="));
         assertEquals(MovieStatus.NOT_FOUND, movie.getStatus());
     }
 
@@ -232,7 +234,8 @@ class ImdbPageVerificationTest extends ImdbTestSupport {
         // Страница по id открыта ровно один раз (для проверки), повторно — нет.
         verify(driver, times(1)).get("https://www.imdb.com/title/tt41621104/");
         assertNull(movie.getImdbId(), "imdbId подкаст-эпизода сброшен");
-        verify(driver).get(org.mockito.ArgumentMatchers.contains("/find/?q="));
+        // Поиск пуст: навигация + один повтор готовности выдачи (обе на find-URL).
+        verify(driver, atLeastOnce()).get(org.mockito.ArgumentMatchers.contains("/find/?q="));
         assertEquals(MovieStatus.NOT_FOUND, movie.getStatus(),
                 "поиск пуст — NOT_FOUND: оценка эпизоду не ставилась");
     }

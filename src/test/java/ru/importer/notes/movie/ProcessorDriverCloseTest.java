@@ -90,7 +90,13 @@ class ProcessorDriverCloseTest {
                 .thenAnswer(inv -> {
                     ImportProgress p = inv.getArgument(2);
                     p.abort();
-                    return List.of(new MovieData());
+                    // Валидная строка-фильм: подсчёт идёт по отфильтрованному списку,
+                    // поэтому abort-путь должен сработать раньше проверки «оценок не найдено».
+                    MovieData aborted = new MovieData();
+                    aborted.setKpId(1L);
+                    aborted.setName("Фильм");
+                    aborted.setKpRating(5);
+                    return List.of(aborted);
                 });
 
         Processor processor = new Processor(authManager, exporter, List.of(seleniumProvider), logFile, progress, coordinator);

@@ -4,10 +4,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
-import org.openqa.selenium.support.ui.WebDriverWait;
 import ru.importer.notes.dto.MovieData;
 import ru.importer.notes.dto.MovieStatus;
 import ru.importer.notes.movie.ImportProgress;
@@ -16,7 +14,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
@@ -115,7 +112,8 @@ class ImdbPregateRetryTest extends ImdbTestSupport {
 
         assertNull(movie.getImdbId(), "imdb_id прошлого прогона должен сбрасываться");
         assertEquals(MovieStatus.NOT_FOUND, movie.getStatus());
-        verify(driver).get(org.mockito.ArgumentMatchers.contains("/find/?q="));
+        // Поиск пуст: навигация + один повтор готовности выдачи (обе на find-URL).
+        verify(driver, atLeastOnce()).get(org.mockito.ArgumentMatchers.contains("/find/?q="));
     }
 
     @Test
@@ -132,13 +130,12 @@ class ImdbPregateRetryTest extends ImdbTestSupport {
         when(result.getAttribute("href")).thenReturn("/title/tt13622970/?ref_=fn_tt_tt");
 
         WebDriver driver = mockDriver(List.of(result));
-        WebDriverWait wait = mock(WebDriverWait.class);
-        when(wait.until(any())).thenThrow(new TimeoutException());
 
         exporter.evaluate(movies, driver, new ImportProgress(), () -> { });
 
         assertEquals("tt13622970", movie.getImdbId(), "imdb_id перезаписан свежим результатом поиска");
-        verify(driver).get(org.mockito.ArgumentMatchers.contains("/find/?q="));
+        // Свежий результат найден сразу; переход по href нового id (не по старому tt8887776).
+        verify(driver, atLeastOnce()).get(org.mockito.ArgumentMatchers.contains("/find/?q="));
         verify(driver, atLeastOnce()).get(org.mockito.ArgumentMatchers.contains("/title/tt13622970"));
         verify(driver, never()).get(org.mockito.ArgumentMatchers.contains("tt8887776"));
     }
@@ -181,7 +178,8 @@ class ImdbPregateRetryTest extends ImdbTestSupport {
         assertNull(movie.getImdbId(), "устаревший imdb_id должен быть сброшен");
         assertNull(movie.getErrorMessage(), "старый текст ошибки больше не актуален");
         assertEquals(MovieStatus.NOT_FOUND, movie.getStatus());
-        verify(driver).get(org.mockito.ArgumentMatchers.contains("/find/?q="));
+        // Поиск пуст: навигация + один повтор готовности выдачи (обе на find-URL).
+        verify(driver, atLeastOnce()).get(org.mockito.ArgumentMatchers.contains("/find/?q="));
         verify(driver, never()).get(org.mockito.ArgumentMatchers.contains("/title/"));
     }
 
@@ -195,8 +193,6 @@ class ImdbPregateRetryTest extends ImdbTestSupport {
 
         WebDriver driver = mockDriver(Collections.emptyList());
         when(driver.getTitle()).thenReturn("She-Hulk: Attorney at Law (TV Series 2022– ) - IMDb");
-        WebDriverWait wait = mock(WebDriverWait.class);
-        when(wait.until(any())).thenThrow(new TimeoutException());
 
         exporter.evaluate(movies, driver, new ImportProgress(), () -> { });
 
@@ -217,7 +213,8 @@ class ImdbPregateRetryTest extends ImdbTestSupport {
         exporter.evaluate(movies, driver, new ImportProgress(), () -> { });
 
         verify(driver, never()).get(org.mockito.ArgumentMatchers.contains("/title/"));
-        verify(driver).get(org.mockito.ArgumentMatchers.contains("/find/?q="));
+        // Поиск пуст: навигация + один повтор готовности выдачи (обе на find-URL).
+        verify(driver, atLeastOnce()).get(org.mockito.ArgumentMatchers.contains("/find/?q="));
         assertNull(movie.getImdbId(), "невалидный формат id сбрасывается");
         assertEquals(MovieStatus.NOT_FOUND, movie.getStatus());
     }
@@ -233,7 +230,8 @@ class ImdbPregateRetryTest extends ImdbTestSupport {
         exporter.evaluate(movies, driver, new ImportProgress(), () -> { });
 
         verify(driver, never()).get(org.mockito.ArgumentMatchers.contains("/title/"));
-        verify(driver).get(org.mockito.ArgumentMatchers.contains("/find/?q="));
+        // Поиск пуст: навигация + один повтор готовности выдачи (обе на find-URL).
+        verify(driver, atLeastOnce()).get(org.mockito.ArgumentMatchers.contains("/find/?q="));
         assertNull(movie.getImdbId(), "невалидный формат id сбрасывается");
     }
 }

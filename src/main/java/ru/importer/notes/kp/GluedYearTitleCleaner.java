@@ -65,6 +65,59 @@ final class GluedYearTitleCleaner {
     }
 
     /**
+     * Год для режима «доверять хвосту» (чтение дампа оценок): название оканчивается цифровым
+     * хвостом из ≥5 цифр, последние 4 из которых — валидный год → этот год; иначе 0.
+     * В отличие от {@link #extractTrailingGluedYear} 4-значные хвосты НЕ трогаются: цифры
+     * в конце названия («Космическая одиссея 2001») считаются частью названия.
+     */
+    static int extractTrustedGluedYear(String name) {
+        Matcher m = trustedTailMatcher(name);
+        if (m == null) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(m.group(1));
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    /**
+     * Режим «доверять хвосту»: год берётся ИЗ ХВОСТА, а не из годового поля строки (год
+     * дампа может быть мусором — сценарий «Волчья яма 22013»/2003 → «Волчья яма 2»/2013).
+     * Отрезается только валидный хвост-год, продолженный цифрами названия (≥5 цифр подряд);
+     * 4-значный хвост — не трогаем. Если после отрезания пусто — название не трогаем.
+     */
+    static String stripTrustedGluedYear(String name) {
+        Matcher m = trustedTailMatcher(name);
+        if (m == null) {
+            return name;
+        }
+        String stripped = name.substring(0, m.start()).trim();
+        return stripped.isEmpty() ? name : stripped;
+    }
+
+    /**
+     * Матчер хвоста для режима «доверять хвосту»: год найден И ему предшествует цифра
+     * (значит, цифровой хвост названия — ≥5 цифр подряд). 4-значный хвост — null.
+     */
+    private static Matcher trustedTailMatcher(String name) {
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        Matcher m = GLUED_YEAR_TAIL.matcher(name);
+        if (!m.find()) {
+            return null;
+        }
+        // Цифра непосредственно перед хвостом-годом отличает склейку («... 2» + «2013»)
+        // от легитимных 4 цифр в названии («Космическая одиссея 2001»).
+        if (m.start() == 0 || !Character.isDigit(name.charAt(m.start() - 1))) {
+            return null;
+        }
+        return m;
+    }
+
+    /**
      * Отрезает от названия хвост, склеенный с годом: «Мортал Комбат 22025» → «Мортал Комбат 2».
      * Правила безопасности: при {@code knownYear > 0} хвост отрезается только при совпадении
      * с ним (иначе цифры могли быть частью названия — «Космическая одиссея 2001»); хвост

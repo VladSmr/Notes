@@ -184,6 +184,70 @@ class LogFileServiceTest {
         assertEquals("kp-ratings.csv", logFile.getKpDumpFileName());
     }
 
+    @Test
+    void readKpDump_shouldJoinMultilineQuotedField() throws IOException {
+        // Реальный паттерн дампа: многострочное Selenium-исключение целиком в кавычках.
+        // Раньше разрез по \n превращал хвост «(Session info: chrome=…)» в отдельный
+        // мусорный «фильм»; теперь это ОДНА логическая строка.
+        writeRawDump("Фильм;Оригинал;Film;2020;7;123;tt1;ошибка;"
+                + "\"element click intercepted: Element is not clickable\n"
+                + "  (Session info: chrome=152.0.7977.65)\"\n");
+
+        List<String[]> rows = logFile.readKpDump();
+
+        assertEquals(1, rows.size(), "многострочная запись читается как одна");
+        assertEquals(9, rows.get(0).length);
+        assertEquals("Фильм", rows.get(0)[0]);
+        assertEquals("123", rows.get(0)[5]);
+        assertTrue(rows.get(0)[8].contains("element click intercepted"));
+        assertTrue(rows.get(0)[8].contains("(Session info: chrome=152.0.7977.65)"));
+        assertTrue(rows.get(0)[8].contains("\n"), "перенос строки внутри поля сохраняется");
+    }
+
+    @Test
+    void readKpDump_shouldUnescapeQuotesInsideMultilineField() throws IOException {
+        writeRawDump("\"Название \"\"в кавычках\"\"\";;;2000;5;1;;ошибка;"
+                + "\"первая\nвторая \"\"цитата\"\"\"\n");
+
+        List<String[]> rows = logFile.readKpDump();
+
+        assertEquals(1, rows.size());
+        assertEquals("Название \"в кавычках\"", rows.get(0)[0]);
+        assertEquals("первая\nвторая \"цитата\"", rows.get(0)[8]);
+    }
+
+    @Test
+    void saveAndReadKpDump_shouldKeepNineColumnsAllStatusesAndBom() throws IOException {
+        logFile.saveKpDump(
+                "A;Aо;Aen;2000;5;1;tt1;успешно;",
+                "B;Bо;Ben;2001;6;2;tt2;проставлено с оговоркой;",
+                "C;Cо;Cen;2002;7;3;tt3;не найден;",
+                "D;Dо;Den;2003;8;4;tt4;пропущено (уже стоит оценка);",
+                "E;Eо;Een;2004;9;5;tt5;руками (оценки отличаются);",
+                "F;Fо;Fen;2005;1;6;tt6;ошибка;boom",
+                "G;Gо;Gen;2006;;7;tt7;неполные данные;"
+        );
+
+        byte[] bytes = Files.readAllBytes(tempDir.resolve("kp-ratings.csv"));
+        assertEquals((byte) 0xEF, bytes[0], "BOM (UTF-8) сохранён");
+        assertEquals((byte) 0xBB, bytes[1]);
+        assertEquals((byte) 0xBF, bytes[2]);
+
+        List<String[]> rows = logFile.readKpDump();
+        assertEquals(7, rows.size(), "прочитаны все строки данных");
+        for (String[] row : rows) {
+            assertEquals(9, row.length, "у каждой строки 9 колонок");
+        }
+        assertEquals("неполные данные", rows.get(6)[7]);
+        assertEquals("", rows.get(6)[4], "пустая оценка у строки INCOMPLETE_DATA сохранена");
+    }
+
+    /** Пишет сырой дамп (заголовок + тело) в файл по умолчанию {@code kp-ratings.csv}. */
+    private void writeRawDump(String body) throws IOException {
+        Files.writeString(tempDir.resolve("kp-ratings.csv"),
+                "title;original_title;english_title;year;rating;kp_id;imdb_id;status;error\n" + body);
+    }
+
     /** Пишет файл дампа: заголовок + одна строка данных, с явным временем изменения. */
     private void writeDumpFile(String fileName, String row, long lastModified) throws IOException {
         Path file = Files.createFile(tempDir.resolve(fileName));

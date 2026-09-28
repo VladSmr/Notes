@@ -83,12 +83,13 @@ class CsvKpRatingsProviderTest {
 
     @Test
     void fetchRatings_shouldHandleQuotedSemicolonsAndEscapedQuotes() {
-        logFile.saveKpDump("\"Фильм; с точкой\";\"Title \"\"X\"\"\";;2001;5;;tt0000001;;");
+        logFile.saveKpDump("\"Фильм; с точкой\";\"Title \"\"X\"\"\";;2001;5;777;tt0000001;;");
 
         List<MovieData> movies = provider.fetchRatings(1L, null, null);
         assertEquals(1, movies.size());
         assertEquals("Фильм; с точкой", movies.get(0).getName());
         assertEquals("Title \"X\"", movies.get(0).getNameOriginal());
+        assertEquals(777L, movies.get(0).getKpId());
     }
 
     @Test
@@ -109,6 +110,28 @@ class CsvKpRatingsProviderTest {
         List<MovieData> movies = provider.fetchRatings(222L, null, null);
         assertEquals(1, movies.size());
         assertEquals("New", movies.get(0).getName());
+    }
+
+    @Test
+    void fetchRatings_shouldSkipRowsWithoutValidKpId() {
+        // Мусор из старого дампа (обрывок многострочной ошибки) и битые kp_id не должны
+        // превращаться в фильмы и получать статус «неполные данные».
+        logFile.saveKpDump(
+                "Хороший;Good;;2000;5;111;tt1;;",
+                "(Session info: chrome=152.0.7977.65);;;;;;;;",
+                "Нечисловой;X;;2001;6;abc;tt2;;",
+                "Нулевой;Z;;2002;7;0;tt3;;",
+                "Ещё хороший;Good2;;2003;8;222;tt4;;"
+        );
+
+        List<MovieData> movies = provider.fetchRatings(1L, null, null);
+
+        assertEquals(2, movies.size(), "счётчик фильмов не искажён мусорными строками");
+        assertEquals("Хороший", movies.get(0).getName());
+        assertEquals(111L, movies.get(0).getKpId());
+        assertEquals("Ещё хороший", movies.get(1).getName());
+        assertEquals(Integer.valueOf(2), provider.fetchTotalRatings(1L, null),
+                "счётчик дампа тоже без мусора");
     }
 
     /** Пишет файл дампа: заголовок + одна строка данных, с явным временем изменения. */
@@ -183,6 +206,44 @@ class CsvKpRatingsProviderTest {
         assertFalse(MovieStatus.NOT_FOUND.isDone(), "«не найден» ищется заново по названию+году");
         assertFalse(MovieStatus.ERROR.isDone());
         assertFalse(MovieStatus.PENDING.isDone());
+    }
+
+    // ------------------------------------------------------------------
+    // Зачистка склейки «название+год» при ЧТЕНИИ дампа: доверяем хвосту, а не полю года
+    // ------------------------------------------------------------------
+
+    @Test
+    void fetchRatings_shouldCleanGluedTailTrustingTailYearOverGarbageRowYear() {
+        // Кейс «Волчья яма 22013»: год строки — мусор (2003), хвост «22013» → год 2013.
+        logFile.saveKpDump("Волчья яма 22013;Wolf Creek 2;;2003;8;777;;;");
+
+        List<MovieData> movies = provider.fetchRatings(1L, null, null);
+
+        assertEquals(1, movies.size());
+        assertEquals("Волчья яма 2", movies.get(0).getName(), "склейка разклеена, доверяем хвосту");
+        assertEquals(2013, movies.get(0).getYear(), "год взят из хвоста, а не из поля строки");
+    }
+
+    @Test
+    void fetchRatings_shouldNotTouchFourDigitTailInName() {
+        // «Космическая одиссея 2001» при годе 1968: 4-значный хвост — часть названия.
+        logFile.saveKpDump("Космическая одиссея 2001;2001: A Space Odyssey;;1968;9;888;;;");
+
+        List<MovieData> movies = provider.fetchRatings(1L, null, null);
+
+        assertEquals("Космическая одиссея 2001", movies.get(0).getName());
+        assertEquals(1968, movies.get(0).getYear());
+    }
+
+    @Test
+    void fetchRatings_shouldNotStripTailWhenTailIsNotValidYear() {
+        // Хвост «12345» не оканчивается валидным годом — не трогаем.
+        logFile.saveKpDump("Фильм 12345;Film;;2000;5;999;;;");
+
+        List<MovieData> movies = provider.fetchRatings(1L, null, null);
+
+        assertEquals("Фильм 12345", movies.get(0).getName());
+        assertEquals(2000, movies.get(0).getYear());
     }
 
 }

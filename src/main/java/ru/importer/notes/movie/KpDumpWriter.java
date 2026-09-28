@@ -1,5 +1,6 @@
 package ru.importer.notes.movie;
 
+import java.util.ArrayList;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -96,7 +97,7 @@ class KpDumpWriter {
     }
 
     private String escapeCsv(String value) {
-        if (value.contains(";") || value.contains("\"") || value.contains("\n")) {
+        if (value.contains(";") || value.contains("\"") || value.contains("\n") || value.contains("\r")) {
             return "\"" + value.replace("\"", "\"\"") + "\"";
         }
         return value;
@@ -124,6 +125,61 @@ class KpDumpWriter {
 
     private void saveKpDump(List<MovieData> movies) {
         logFile.saveKpDump(buildKpDumpLines(movies));
+    }
+
+    /**
+     * Проверяет, что строка — настоящий фильм из выгрузки оценок КП: есть название,
+     * положительная оценка и положительный kp_id. Легитимные строки всегда содержат все три.
+     *
+     * @return причина пропуска или null, если строка валидна
+     */
+    private static String invalidDumpReason(MovieData m) {
+        if (m.getName() == null || m.getName().isBlank()) {
+            return "пустое название";
+        }
+        if (m.getKpRating() <= 0) {
+            return "нет оценки (rating <= 0)";
+        }
+        if (m.getKpId() == null || m.getKpId() <= 0) {
+            return "нет kp_id";
+        }
+        return null;
+    }
+
+    /**
+     * Оставляет только строки-фильмы для пути записи при ПАРСИНГЕ (провайдеры → дамп).
+     * Строки-не-фильмы (без названия/оценки/kp_id) пропускаются с предупреждением, чтобы
+     * мусор из ответа источника (например, обрывки Selenium-исключений) не попадал в дамп.
+     * Применяется только к парсингу: при проставлении строки уже валидны (в т.ч.
+     * INCOMPLETE_DATA с пустой оценкой), и их терять нельзя.
+     * Пакетный доступ — чтобы этап парсинга считал total/пустоту по тому же списку,
+     * что реально записывается в дамп.
+     */
+    List<MovieData> filterDumpableForParsing(List<MovieData> movies) {
+        List<MovieData> valid = new ArrayList<>(movies.size());
+        for (MovieData m : movies) {
+            String reason = invalidDumpReason(m);
+            if (reason != null) {
+                log.warn("Парсинг: строка пропущена при записи дампа ({}): name='{}', rating={}, kpId={}",
+                         reason, m.getName(), m.getKpRating(), m.getKpId());
+                continue;
+            }
+            valid.add(m);
+        }
+        int skipped = movies.size() - valid.size();
+        if (skipped > 0) {
+            log.warn("Парсинг: в дамп не записано строк-не-фильмов: {} из {}", skipped, movies.size());
+        }
+        return valid;
+    }
+
+    /**
+     * Сохраняет дамп при ПАРСИНГЕ, предварительно отсеяв строки-не-фильмы
+     * (см. {@link #filterDumpableForParsing}). Предупреждения логируются один раз,
+     * до ретраев/паузы «файл занят».
+     */
+    void saveKpDumpSafelyForParsing(List<MovieData> movies) {
+        saveKpDumpSafely(filterDumpableForParsing(movies));
     }
 
     /**

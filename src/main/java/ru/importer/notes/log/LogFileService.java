@@ -151,17 +151,67 @@ public class LogFileService {
         }
         List<String[]> rows = new ArrayList<>();
         try {
-            List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
-            for (int i = 0; i < lines.size(); i++) {
-                if (i == 0 || lines.get(i).isBlank()) {
+            List<String> physicalLines = Files.readAllLines(file, StandardCharsets.UTF_8);
+            List<String> records = joinLogicalLines(physicalLines);
+            for (int i = 0; i < records.size(); i++) {
+                if (i == 0 || records.get(i).isBlank()) {
                     continue;
                 }
-                rows.add(parseCsvLine(lines.get(i)));
+                rows.add(parseCsvLine(records.get(i)));
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
         return rows;
+    }
+
+    /**
+     * Собирает физические строки файла в логические CSV-записи (RFC 4180): поле в двойных
+     * кавычках может содержать переводы строк, поэтому запись продолжается до закрывающей
+     * кавычки. Возвращённые записи склеены через {@code \n} и пригодны для {@link #parseCsvLine}.
+     */
+    private static List<String> joinLogicalLines(List<String> physicalLines) {
+        List<String> records = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        boolean inQuotes = false;
+        for (String line : physicalLines) {
+            if (cur.length() > 0) {
+                cur.append('\n');
+            }
+            cur.append(line);
+            inQuotes = trackQuoteState(line, inQuotes);
+            if (!inQuotes) {
+                records.add(cur.toString());
+                cur.setLength(0);
+            }
+        }
+        if (cur.length() > 0) {
+            if (inQuotes) {
+                // Незакрытая кавычка до EOF: данные не теряем — склеенную запись отдаём как есть.
+                log.warn("CSV: незакрытая кавычка до конца файла — последняя запись склеена как есть ({} символов)",
+                         cur.length());
+            }
+            records.add(cur.toString());
+        }
+        return records;
+    }
+
+    /**
+     * Пересчитывает состояние «внутри кавычек» по физической строке. Пара {@code ""} внутри
+     * кавычек — экранированная кавычка, состояние не меняет (согласовано с {@link #parseCsvLine}).
+     */
+    private static boolean trackQuoteState(String line, boolean inQuotes) {
+        for (int i = 0; i < line.length(); i++) {
+            if (line.charAt(i) != '"') {
+                continue;
+            }
+            if (inQuotes && i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                i++;
+            } else {
+                inQuotes = !inQuotes;
+            }
+        }
+        return inQuotes;
     }
 
     /** Разбор строки CSV с поддержкой кавычек и экранирования "" внутри них. */

@@ -399,4 +399,33 @@ class KpNotesParserTest extends KpTestSupport {
         assertEquals(2026, movie.getYear());
         assertEquals(5, movie.getKpRating());
     }
+
+    // ------------------------------------------------------------------
+    // Режим «доверять хвосту» (чтение дампа): год из хвоста, 4-значные — не трогаем
+    // ------------------------------------------------------------------
+
+    @Test
+    void extractTrustedGluedYear_cases() {
+        // «Волчья яма 22013»: хвост ≥5 цифр, последние 4 — год 2013.
+        assertEquals(2013, GluedYearTitleCleaner.extractTrustedGluedYear("Волчья яма 22013"));
+        assertEquals(2025, GluedYearTitleCleaner.extractTrustedGluedYear("Мортал Комбат 22025"));
+        // 4-значный хвост — часть названия, не трогаем.
+        assertEquals(0, GluedYearTitleCleaner.extractTrustedGluedYear("Космическая одиссея 2001"));
+        assertEquals(0, GluedYearTitleCleaner.extractTrustedGluedYear("Начало2010"));
+        // Хвост не оканчивается валидным годом.
+        assertEquals(0, GluedYearTitleCleaner.extractTrustedGluedYear("Название12345"));
+        assertEquals(0, GluedYearTitleCleaner.extractTrustedGluedYear("Матрица"));
+        assertEquals(0, GluedYearTitleCleaner.extractTrustedGluedYear(null));
+    }
+
+    @Test
+    void stripTrustedGluedYear_cases() {
+        assertEquals("Волчья яма 2", GluedYearTitleCleaner.stripTrustedGluedYear("Волчья яма 22013"));
+        assertEquals("Мортал Комбат 2", GluedYearTitleCleaner.stripTrustedGluedYear("Мортал Комбат 22025"));
+        // 4-значные хвосты и невалидные — без изменений (согласовано с extract).
+        assertEquals("Космическая одиссея 2001", GluedYearTitleCleaner.stripTrustedGluedYear("Космическая одиссея 2001"));
+        assertEquals("Начало2010", GluedYearTitleCleaner.stripTrustedGluedYear("Начало2010"));
+        assertEquals("Название12345", GluedYearTitleCleaner.stripTrustedGluedYear("Название12345"));
+        assertNull(GluedYearTitleCleaner.stripTrustedGluedYear(null));
+    }
 }

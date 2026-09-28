@@ -142,7 +142,7 @@ class ImdbDedupTest extends ImdbTestSupport {
 
         exporter.evaluate(movies, driver, new ImportProgress(), () -> { });
 
-        verify(driver, times(2)).get(org.mockito.ArgumentMatchers.contains("/find/?q="));
+        verify(driver, times(4)).get(org.mockito.ArgumentMatchers.contains("/find/?q="));
         verify(driver, never()).get(org.mockito.ArgumentMatchers.contains("/title/"));
         assertNull(rated.getImdbId());
         assertNull(pending.getImdbId());

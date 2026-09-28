@@ -18,9 +18,11 @@ import static org.mockito.Mockito.when;
  */
 abstract class ImdbTestSupport {
 
-    protected final ImdbNotesExporter exporter = new ImdbNotesExporter();
     protected final ImdbPageVerifier verifier = new ImdbPageVerifier();
-    protected final ImdbSearchAndSelect search = new ImdbSearchAndSelect(verifier);
+    /** Поиск с минимальным таймаутом ожидания выдачи — тесты без реального Chrome не тормозят. */
+    protected final ImdbSearchAndSelect search =
+            new ImdbSearchAndSelect(verifier, Duration.ofMillis(1), Duration.ofMillis(1));
+    protected final ImdbNotesExporter exporter = new ImdbNotesExporter(search);
     protected final ImdbRatingClicker clicker = new ImdbRatingClicker();
 
     // ------------------------------------------------------------------
