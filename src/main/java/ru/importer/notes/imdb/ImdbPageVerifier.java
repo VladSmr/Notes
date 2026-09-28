@@ -15,7 +15,8 @@ import ru.importer.notes.dto.MovieStatus;
 import ru.importer.notes.kp.KpYearValidator;
 
 /**
- * Верификация страницы IMDB: гейт типа по JSON-LD {@code @type}, сверка названия/года по {@code <title>}, формат imdbId.
+ * Верификация страницы IMDB: гейт типа по JSON-LD {@code @type}, сверка названия
+ * ({@code <title>}, JSON-LD {@code name}/{@code alternateName}) и года, формат imdbId.
  */
 @Slf4j
 class ImdbPageVerifier {
@@ -32,30 +33,34 @@ class ImdbPageVerifier {
     private static final ObjectMapper JSON_LD_MAPPER = new ObjectMapper();
 
     /**
-     * Разбирает один JSON-LD-скрипт и собирает @type в allowed/others (по принадлежности).
+     * Разбирает один JSON-LD-скрипт: собирает @type в allowed/others и (для узлов типа
+     * Movie/TVSeries) названия name/alternateName.
      */
-    private static void collectJsonLdTypes(String json, Set<String> allowed, List<String> others, int depth) {
-        if (depth > 5 || json == null || json.isBlank()) {
+    private static void collectJsonLd(String json, Set<String> allowed, List<String> others,
+                                      List<String> names) {
+        if (json == null || json.isBlank()) {
             return;
         }
         try {
-            collectJsonLdTypesFromNode(JSON_LD_MAPPER.readTree(json), allowed, others, depth);
+            collectJsonLdFromNode(JSON_LD_MAPPER.readTree(json), allowed, others, names, 0);
         } catch (Exception ignored) {
             // Битый/нестандартный JSON одного скрипта не должен ломать остальные
         }
     }
 
     /**
-     * Рекурсивный сбор @type: объекты, массивы, массив-тип, {@code @graph} (с защитой глубины).
+     * Рекурсивный сбор @type и названий: объекты, массивы, массив-тип, {@code @graph}
+     * (с защитой глубины рекурсии). name/alternateName берутся только у узлов типа
+     * Movie/TVSeries — чтобы не подмешивать названия из BreadcrumbList и прочих посторонних узлов.
      */
-    private static void collectJsonLdTypesFromNode(JsonNode node, Set<String> allowed,
-                                                   List<String> others, int depth) {
-        if (node == null || node.isMissingNode()) {
+    private static void collectJsonLdFromNode(JsonNode node, Set<String> allowed, List<String> others,
+                                              List<String> names, int depth) {
+        if (depth > 5 || node == null || node.isMissingNode()) {
             return;
         }
         if (node.isArray()) {
             for (JsonNode child : node) {
-                collectJsonLdTypesFromNode(child, allowed, others, depth + 1);
+                collectJsonLdFromNode(child, allowed, others, names, depth + 1);
             }
             return;
         }
@@ -63,6 +68,7 @@ class ImdbPageVerifier {
             return;
         }
         JsonNode type = node.get("@type");
+        boolean titleNode = false;
         if (type != null) {
             List<String> types = new ArrayList<>();
             if (type.isTextual()) {
@@ -77,14 +83,36 @@ class ImdbPageVerifier {
             for (String t : types) {
                 if (ALLOWED_JSON_LD_TYPES.contains(t)) {
                     allowed.add(t);
+                    titleNode = true;
                 } else {
                     others.add(t);
                 }
             }
         }
+        if (titleNode) {
+            addJsonLdName(names, node.get("name"));
+            addJsonLdName(names, node.get("alternateName"));
+        }
         JsonNode graph = node.get("@graph");
         if (graph != null) {
-            collectJsonLdTypesFromNode(graph, allowed, others, depth + 1);
+            collectJsonLdFromNode(graph, allowed, others, names, depth + 1);
+        }
+    }
+
+    /** Добавляет текстовое (или массив текстовых) значение name/alternateName в список. */
+    private static void addJsonLdName(List<String> names, JsonNode value) {
+        if (value == null) {
+            return;
+        }
+        if (value.isTextual()) {
+            String text = value.asText();
+            if (text != null && !text.isBlank()) {
+                names.add(text);
+            }
+        } else if (value.isArray()) {
+            for (JsonNode item : value) {
+                addJsonLdName(names, item);
+            }
         }
     }
 
@@ -123,33 +151,50 @@ class ImdbPageVerifier {
     }
 
     /**
-     * Тип тайтла ({@code @type}) из JSON-LD страницы IMDB. Скриптов может быть несколько,
-     *
-     * @type — строка, массив или в {@code @graph}: приоритет у допустимого (Movie/TVSeries),
-     * иначе первый посторонний. null — JSON-LD нет/не распарсился (проверка не проводится).
+     * Данные JSON-LD страницы IMDB: тип тайтла ({@code @type}) и названия из узлов
+     * Movie/TVSeries ({@code name}, {@code alternateName}).
      */
-    static String extractJsonLdType(String pageSource) {
+    record JsonLdData(String type, List<String> names) {
+
+        static JsonLdData empty() {
+            return new JsonLdData(null, List.of());
+        }
+    }
+
+    /**
+     * Тип тайтла и названия (name/alternateName) из JSON-LD страницы IMDB. Скриптов может
+     * быть несколько, @type — строка/массив или в {@code @graph}: приоритет у допустимого
+     * (Movie/TVSeries), иначе первый посторонний. Все данные собираются одним парсингом.
+     */
+    static JsonLdData extractJsonLdData(String pageSource) {
         if (pageSource == null || pageSource.isBlank()) {
-            return null;
+            return JsonLdData.empty();
         }
         try {
             Document doc = Jsoup.parse(pageSource);
             Set<String> allowed = new HashSet<>();
             List<String> others = new ArrayList<>();
+            List<String> names = new ArrayList<>();
             for (org.jsoup.nodes.Element script : doc.getElementsByTag("script")) {
                 if (!"application/ld+json".equals(script.attr("type"))) {
                     continue;
                 }
-                collectJsonLdTypes(script.data(), allowed, others, 0);
+                collectJsonLd(script.data(), allowed, others, names);
             }
-            if (!allowed.isEmpty()) {
-                return allowed.iterator().next();
-            }
-            return others.isEmpty() ? null : others.getFirst();
+            String type = !allowed.isEmpty() ? allowed.iterator().next()
+                    : (others.isEmpty() ? null : others.getFirst());
+            return new JsonLdData(type, names);
         } catch (Exception e) {
             log.warn("Не удалось разобрать JSON-LD страницы IMDB (проверка типа пропущена): {}", e.getMessage());
-            return null;
+            return JsonLdData.empty();
         }
+    }
+
+    /**
+     * Тип тайтла ({@code @type}) из JSON-LD страницы IMDB (обратная совместимость).
+     */
+    static String extractJsonLdType(String pageSource) {
+        return extractJsonLdData(pageSource).type();
     }
 
     /**
@@ -174,8 +219,9 @@ class ImdbPageVerifier {
      * Верификация прямого захода: соответствует ли открытая страница нашему фильму.
      * Проверки по порядку: тип тайтла по JSON-LD (@type вне Movie/TVSeries — отказ,
      * даже если название в {@code <title>} совпало: у эпизода оно может совпадать
-     * буквально), название из {@code <title>} после нормализации, год (расхождение ≤1
-     * допустимо: год КП может легитимно отличаться от IMDB).
+     * буквально), название хотя бы из одного источника ({@code <title>}, JSON-LD
+     * {@code name}, JSON-LD {@code alternateName}) после нормализации, год (расхождение
+     * ≤1 допустимо: год КП может легитимно отличаться от IMDB).
      */
     boolean pageMatchesMovie(WebDriver driver, MovieData movie) {
         String pageTitle;
@@ -183,35 +229,30 @@ class ImdbPageVerifier {
             pageTitle = driver.getTitle();
         } catch (Exception e) {
             log.warn("Не удалось прочитать <title> страницы IMDB: {}", e.getMessage());
-            return false;
+            pageTitle = null;
         }
-        if (pageTitle == null || pageTitle.isBlank()) {
-            return false;
-        }
+        // JSON-LD парсим один раз: и тип, и названия.
+        JsonLdData jsonLd = extractJsonLdData(readPageSource(driver));
         // Тип тайтла отсекается до сверки названия: у эпизода название может совпасть
-        // буквально. null (JSON-LD нет/не распарсился) — решает проверка <title> ниже.
-        String jsonLdType = extractJsonLdType(readPageSource(driver));
-        if (jsonLdType != null && !ALLOWED_JSON_LD_TYPES.contains(jsonLdType)) {
+        // буквально. null (JSON-LD нет/не распарсился) — решают проверки названия ниже.
+        if (jsonLd.type() != null && !ALLOWED_JSON_LD_TYPES.contains(jsonLd.type())) {
             log.info("Тип тайтла IMDB по JSON-LD: {} (ожидались Movie/TVSeries) — imdbId ведёт "
-                             + "не на фильм, сбрасываю и ищу по названию", jsonLdType);
+                             + "не на фильм, сбрасываю и ищу по названию", jsonLd.type());
             return false;
         }
-        String pageName = extractImdbPageName(pageTitle);
-        if (pageName.isBlank()) {
-            return false;
-        }
-        String normalizedPage = ImdbNotesExporter.normalizeTitle(pageName);
-        boolean nameMatches = false;
-        for (String candidate : ImdbNotesExporter.candidateTitles(movie)) {
-            if (ImdbNotesExporter.normalizeTitle(candidate).equals(normalizedPage)) {
-                nameMatches = true;
-                break;
+        // Источники названия страницы: <title>, JSON-LD name, JSON-LD alternateName.
+        List<String> pageNames = new ArrayList<>();
+        if (pageTitle != null && !pageTitle.isBlank()) {
+            String pageName = extractImdbPageName(pageTitle);
+            if (!pageName.isBlank()) {
+                pageNames.add(pageName);
             }
         }
-        if (!nameMatches) {
+        pageNames.addAll(jsonLd.names());
+        if (!nameMatchesAny(pageNames, movie)) {
             return false;
         }
-        int pageYear = extractImdbPageYear(pageTitle);
+        int pageYear = pageTitle != null ? extractImdbPageYear(pageTitle) : 0;
         if (pageYear > 0 && KpYearValidator.isValidYear(movie.getYear())
                 && Math.abs(movie.getYear() - pageYear) > 1) {
             log.info("Год на странице IMDB ({}) отличается от года фильма ({}) больше чем на 1 — это другой фильм",
@@ -222,10 +263,32 @@ class ImdbPageVerifier {
     }
 
     /**
+     * Совпало ли ЛЮБОЕ из названий страницы (после нормализации) с ЛЮБЫМ из названий фильма
+     * {@link ImdbNotesExporter#candidateTitles}.
+     */
+    private static boolean nameMatchesAny(List<String> pageNames, MovieData movie) {
+        List<String> candidates = ImdbNotesExporter.candidateTitles(movie);
+        for (String pageName : pageNames) {
+            String normalizedPage = ImdbNotesExporter.normalizeTitle(pageName);
+            if (normalizedPage.isEmpty()) {
+                continue;
+            }
+            for (String candidate : candidates) {
+                if (ImdbNotesExporter.normalizeTitle(candidate).equals(normalizedPage)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
      * Верификация страницы, открытой из выдачи поиска: точный матч по названию может
      * оказаться эпизодом подкаста/сериала или игрой. @type по JSON-LD вне
      * {Movie, TVSeries} — imdb_id сбрасывается, NOT_FOUND, оценка не ставится.
      * JSON-LD отсутствует/не распарсился — прежнее поведение (название уже сверено).
+     * Использует общий одноразовый парсер JSON-LD (заодно собирает name/alternateName):
+     * отдельный type-only проход дал бы второй обход Jsoup ради незначительной экономии.
      */
     void verifyPageTypeAfterSearch(WebDriver driver, MovieData movie) {
         String jsonLdType = extractJsonLdType(readPageSource(driver));

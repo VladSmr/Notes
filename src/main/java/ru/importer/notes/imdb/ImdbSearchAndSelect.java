@@ -11,8 +11,10 @@ import java.util.Locale;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.By;
+import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebDriverException;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import ru.importer.notes.dto.MovieData;
@@ -119,22 +121,23 @@ class ImdbSearchAndSelect {
 
     /**
      * Ссылки результатов в выдаче IMDB — каскадом по приоритету:
-     * (а) ссылки внутри секции «Titles» ({@code a.ipc-title-link-wrapper}); (б) если пусто —
-     * legacy-класс {@code ipc-metadata-list-summary-item__t} (совместимость с фикстурами/кэшем);
-     * (в) если пусто — широкий fallback {@code a[href*="/title/tt"]} (смена разметки).
-     * DOM-порядок внутри каждого шага сохраняется; сайдбарные ссылки не подмешиваются, пока
-     * есть результаты в секции.
+     * (а) ссылки внутри секции «Titles» ({@code a.ipc-title-link-wrapper}) — помечаются
+     * {@code sectionScoped} (только они дают право на «доверенный единственный результат»);
+     * (б) если пусто — legacy-класс {@code ipc-metadata-list-summary-item__t} (совместимость
+     * с фикстурами/кэшем); (в) если пусто — широкий fallback {@code a[href*="/title/tt"]}
+     * (смена разметки). DOM-порядок внутри каждого шага сохраняется; сайдбарные ссылки не
+     * подмешиваются, пока есть результаты в секции.
      */
-    private List<WebElement> collectTitleLinks(WebDriver driver) {
+    private CollectedLinks collectTitleLinks(WebDriver driver) {
         List<WebElement> links = findBySelector(driver, TITLES_SECTION + " " + TITLE_LINK_WRAPPER);
         if (!links.isEmpty()) {
-            return links;
+            return new CollectedLinks(links, true);
         }
         links = findBySelector(driver, LEGACY_TITLE_LINK);
         if (!links.isEmpty()) {
-            return links;
+            return new CollectedLinks(links, false);
         }
-        return findBySelector(driver, "a[href*=\"/title/tt\"]");
+        return new CollectedLinks(findBySelector(driver, "a[href*=\"/title/tt\"]"), false);
     }
 
     /** {@code findElements} по CSS с защитой от исключений (пустой список при сбое). */
@@ -159,15 +162,15 @@ class ImdbSearchAndSelect {
 
     /**
      * Явное ожидание готовности выдачи (не длиннее {@link #searchTimeout}); по таймауту —
-     * пустой список: решение о повторе принимает {@link #loadSearchResults}.
+     * пустой результат: решение о повторе принимает {@link #loadSearchResults}.
      */
-    private List<WebElement> waitForResults(WebDriver driver) {
+    private CollectedLinks waitForResults(WebDriver driver) {
         try {
             newSearchWait(driver).until(d -> isSearchResultsReady(d));
         } catch (TimeoutException e) {
             log.warn("Выдача IMDB не готова за {} с — секция результатов не появилась",
                      searchTimeout.toSeconds());
-            return Collections.emptyList();
+            return CollectedLinks.empty();
         }
         return collectTitleLinks(driver);
     }
@@ -176,9 +179,9 @@ class ImdbSearchAndSelect {
      * Загружает выдачу: ждёт готовности; если не дождались — ОДНА повторная навигация
      * и ещё одно ожидание. Длинных ожиданий нет.
      */
-    private List<WebElement> loadSearchResults(WebDriver driver, String findUrl) {
-        List<WebElement> results = waitForResults(driver);
-        if (!results.isEmpty()) {
+    private CollectedLinks loadSearchResults(WebDriver driver, String findUrl) {
+        CollectedLinks results = waitForResults(driver);
+        if (!results.links().isEmpty()) {
             return results;
         }
         log.warn("Повторная навигация на выдачу IMDB: первая попытка не дождалась результатов ({})", findUrl);
@@ -307,20 +310,32 @@ class ImdbSearchAndSelect {
     /**
      * Открывает кандидата выдачи: tt-id из href и прямой переход (клик перехватывается
      * элементами страницы). Без ссылки на титул — старый клик как крайний фолбэк.
+     *
+     * @return {@code false}, если кандидат не открылся (stale-элемент / ошибка навигации):
+     * вызывающий код трактует это как NOT_FOUND, а не роняет прогон в ERROR.
      */
-    private void openCandidate(WebDriver driver, MovieData movie, WebElement candidate) {
-        String href = getHref(candidate);
-        if (href != null && href.contains("/title/")) {
-            String ttId = extractTtIdFromHref(href);
-            if (ttId != null) {
-                movie.setImdbId(ttId);
+    private boolean openCandidate(WebDriver driver, MovieData movie, WebElement candidate) {
+        try {
+            String href = getHref(candidate);
+            if (href != null && href.contains("/title/")) {
+                String ttId = extractTtIdFromHref(href);
+                if (ttId != null) {
+                    movie.setImdbId(ttId);
+                }
+                // Финальный успех логируется выше (после верификации), чтобы «Найден на IMDB»
+                // не срабатывал на ещё не проверенном кандидате.
+                log.debug("Открываю кандидата из выдачи: {} (tt={})", href, ttId);
+                driver.get(toAbsoluteImdbUrl(href));
+            } else {
+                candidate.click();
             }
-            // Финальный успех логируется выше (после верификации), чтобы «Найден на IMDB»
-            // не срабатывал на ещё не проверенном кандидате.
-            log.debug("Открываю кандидата из выдачи: {} (tt={})", href, ttId);
-            driver.get(toAbsoluteImdbUrl(href));
-        } else {
-            candidate.click();
+            return true;
+        } catch (StaleElementReferenceException e) {
+            log.warn("Кандидат выдачи IMDB устарел (stale) — не открылся: {}", e.getMessage());
+            return false;
+        } catch (WebDriverException e) {
+            log.warn("Не удалось открыть кандидата выдачи IMDB: {}", e.getMessage());
+            return false;
         }
     }
 
@@ -337,7 +352,8 @@ class ImdbSearchAndSelect {
         String findUrl = "https://www.imdb.com/find/?q=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
         driver.get(findUrl);
 
-        SearchOutcome outcome = selectSearchResult(loadSearchResults(driver, findUrl), movie);
+        CollectedLinks collected = loadSearchResults(driver, findUrl);
+        SearchOutcome outcome = selectSearchResult(collected.links(), collected.sectionScoped(), movie);
         if (outcome.candidates().isEmpty()) {
             movie.setStatus(MovieStatus.NOT_FOUND);
             log.info("Не найден на IMDB: {}", movie.getName());
@@ -345,8 +361,28 @@ class ImdbSearchAndSelect {
         }
 
         if (!outcome.ambiguous()) {
-            openCandidate(driver, movie, outcome.candidates().get(0));
-            verifier.verifyPageTypeAfterSearch(driver, movie);
+            if (!openCandidate(driver, movie, outcome.candidates().get(0))) {
+                // Кандидат не открылся (stale/ошибка навигации) — оценку не ставим.
+                movie.setImdbId(null);
+                movie.setStatus(MovieStatus.NOT_FOUND);
+                log.info("Кандидат выдачи не открылся для '{}' — imdb_id сброшен, оценка не ставится",
+                         movie.getName());
+                return false;
+            }
+            if (outcome.fullPageCheck()) {
+                // Доверенный единственный результат: название не сверялось по выдаче —
+                // проверяем открытую страницу целиком (тип + название + год).
+                if (!verifier.pageMatchesMovie(driver, movie)) {
+                    log.info("Единственный результат выдачи {} не прошёл верификацию страницы "
+                                     + "(тип/название/год) для фильма '{}' — оценка не ставится, imdb_id сброшен",
+                             movie.getImdbId(), movie.getName());
+                    movie.setImdbId(null);
+                    movie.setStatus(MovieStatus.NOT_FOUND);
+                    return false;
+                }
+            } else {
+                verifier.verifyPageTypeAfterSearch(driver, movie);
+            }
             if (movie.getStatus() != MovieStatus.NOT_FOUND && movie.getImdbId() != null) {
                 log.info("Найден на IMDB: {} ({})", movie.getName(), movie.getImdbId());
             }
@@ -364,7 +400,13 @@ class ImdbSearchAndSelect {
                 break;
             }
             opened++;
-            openCandidate(driver, movie, candidate);
+            if (!openCandidate(driver, movie, candidate)) {
+                log.info("Неоднозначный выбор по '{}' для фильма '{}': кандидат {} (открытие {}) "
+                                 + "не открылся (stale/ошибка) — пробую следующего",
+                         query, movie.getName(), movie.getImdbId(), opened);
+                movie.setImdbId(null);
+                continue;
+            }
             if (verifier.pageMatchesMovie(driver, movie)) {
                 log.info("Неоднозначный выбор по '{}' для фильма '{}': кандидат {} (открытие {}) "
                                  + "прошёл верификацию страницы — ставка с оговоркой",
@@ -388,10 +430,10 @@ class ImdbSearchAndSelect {
      * кандидаты в порядке релевантности (порядок IMDb), но единственный матч с годом ±1
      * от года фильма — первым (если год различает). Любой выбор из нескольких помечается
      * как неоднозначный и проходит полную верификацию страницы в {@link #searchAndOpen}.
-     * Точных нет — нестрогие стратегии: название+год → год → название. Ничего не совпало —
-     * «не найден».
+     * Точных нет и результат ровно один — доверяем ему (полная проверка страницы).
+     * Иначе нестрогие стратегии: название+год → год → название. Ничего не совпало — «не найден».
      */
-    private SearchOutcome selectSearchResult(List<WebElement> results, MovieData movie) {
+    private SearchOutcome selectSearchResult(List<WebElement> results, boolean sectionScoped, MovieData movie) {
         if (results.isEmpty()) {
             return SearchOutcome.notFoundSearch();
         }
@@ -413,6 +455,14 @@ class ImdbSearchAndSelect {
         }
 
         if (exactMatches.isEmpty()) {
+            // Точно по названию не совпало. Если ровно одна тайтл-ссылка И она из секции
+            // «Titles» — доверяем ей (IMDb сам подтвердил единственность): название на
+            // странице может быть в другой локали/оригинале («Takopi's Original Sin» →
+            // JSON-LD name «Takopii no genzai»). Такой кандидат проходит ПОЛНУЮ верификацию
+            // страницы (тип + название + год). Одиночка из legacy/широкого fallback — НЕ доверенный.
+            if (sectionScoped && results.size() == 1) {
+                return SearchOutcome.trustedSingle(results.get(0));
+            }
             WebElement fuzzy = pickFuzzyResult(results, movie);
             return fuzzy != null ? SearchOutcome.found(fuzzy) : SearchOutcome.notFoundSearch();
         }
@@ -441,23 +491,41 @@ class ImdbSearchAndSelect {
     }
 
     /**
-     * Исход выбора результата поиска: упорядоченные кандидаты (пусто — «не найден») и
-     * признак того, что выбор был неоднозначным (несколько точных совпадений названия).
+     * Исход выбора результата поиска: упорядоченные кандидаты (пусто — «не найден»),
+     * признак неоднозначного выбора (несколько точных совпадений названия) и признак
+     * {@code fullPageCheck} — кандидат не сверялся по выдаче (доверенный единственный
+     * результат) и должен пройти полную верификацию открытой страницы.
      */
-    private record SearchOutcome(List<WebElement> candidates, boolean ambiguous) {
+    private record SearchOutcome(List<WebElement> candidates, boolean ambiguous, boolean fullPageCheck) {
 
         static SearchOutcome ambiguousFound(List<WebElement> candidates) {
-            return new SearchOutcome(candidates, true);
+            return new SearchOutcome(candidates, true, false);
         }
 
         static SearchOutcome found(WebElement element) {
-            return new SearchOutcome(List.of(element), false);
+            return new SearchOutcome(List.of(element), false, false);
+        }
+
+        /** Единственный результат выдачи без сверки названия — полная проверка страницы. */
+        static SearchOutcome trustedSingle(WebElement element) {
+            return new SearchOutcome(List.of(element), false, true);
         }
 
         static SearchOutcome notFoundSearch() {
-            return new SearchOutcome(List.of(), false);
+            return new SearchOutcome(List.of(), false, false);
         }
 
+    }
+
+    /**
+     * Ссылки выдачи и признак того, что они взяты из секции «Titles» (только такие
+     * одиночные ссылки считаются «доверенным единственным результатом»).
+     */
+    private record CollectedLinks(List<WebElement> links, boolean sectionScoped) {
+
+        static CollectedLinks empty() {
+            return new CollectedLinks(List.of(), false);
+        }
     }
 
 }

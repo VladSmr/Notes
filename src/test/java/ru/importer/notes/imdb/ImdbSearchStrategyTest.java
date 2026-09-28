@@ -192,6 +192,178 @@ class ImdbSearchStrategyTest extends ImdbTestSupport {
         assertEquals("tt8772262", movie.getImdbId());
     }
 
+    // ------------------------------------------------------------------
+    // Доверие единственному результату выдачи + сверка JSON-LD name/alternateName
+    // ------------------------------------------------------------------
+
+    @Test
+    void searchAndOpen_singleResultDifferentListName_matchesJsonLdName() {
+        // kp8624606 «Первородный грех Такопи»: в выдаче EN единственный результат
+        // «Takopi's Original Sin», а JSON-LD name страницы = оригинал «Takopii no genzai»
+        // (= english_title). Единственный результат → полная проверка → совпал по JSON-LD.
+        MovieData movie = completeMovie();
+        movie.setName("Первородный грех Такопи");
+        movie.setNameOriginal(null);
+        movie.setNameEn("Takopii no Genzai");
+        movie.setYear(2025);
+
+        WebDriver driver = mockDriver(List.of(
+                result("Takopi's Original Sin (2025)", "/title/tt36988358/")));
+        when(driver.getPageSource()).thenReturn(pageWithJsonLd(
+                "{\"@type\":\"TVSeries\",\"name\":\"Takopii no genzai\","
+                        + "\"alternateName\":\"Takopi's Original Sin\"}"));
+        // <title> заведомо не совпадает с кандидатами — успех возможен только через JSON-LD.
+        when(driver.getTitle()).thenReturn("Brand New English Title (2025) - IMDb");
+
+        boolean ambiguous = search.searchAndOpen(driver, movie);
+
+        assertFalse(ambiguous, "единственный результат — не неоднозначность (ставка была бы RATED)");
+        assertEquals("tt36988358", movie.getImdbId());
+        assertEquals(MovieStatus.PENDING, movie.getStatus(), "верификация пройдена — не NOT_FOUND");
+    }
+
+    @Test
+    void searchAndOpen_singleResultLocalizedDifferently_matchesJsonLdName() {
+        // kp8538004 «Долина улыбок»: в выдаче EN единственный результат «The Holy Boy»,
+        // JSON-LD name = «La valle dei sorrisi» (= english_title).
+        MovieData movie = completeMovie();
+        movie.setName("Долина улыбок");
+        movie.setNameOriginal(null);
+        movie.setNameEn("La valle dei sorrisi");
+        movie.setYear(2025);
+
+        WebDriver driver = mockDriver(List.of(
+                result("The Holy Boy (2025)", "/title/tt33382323/")));
+        when(driver.getPageSource()).thenReturn(pageWithJsonLd(
+                "{\"@type\":\"Movie\",\"name\":\"La valle dei sorrisi\","
+                        + "\"alternateName\":\"The Holy Boy\"}"));
+        // <title> заведомо не совпадает с кандидатами — успех возможен только через JSON-LD.
+        when(driver.getTitle()).thenReturn("Brand New English Title (2025) - IMDb");
+
+        boolean ambiguous = search.searchAndOpen(driver, movie);
+
+        assertFalse(ambiguous);
+        assertEquals("tt33382323", movie.getImdbId());
+        assertEquals(MovieStatus.PENDING, movie.getStatus(), "верификация пройдена — не NOT_FOUND");
+    }
+
+    @Test
+    void searchAndOpen_singleResult_pageNameMismatch_notFound() {
+        // Регресс-защита: ни <title>, ни JSON-LD name/alternateName не совпадают — «не тому не ставить».
+        MovieData movie = completeMovie();
+        movie.setName("Долина улыбок");
+        movie.setNameOriginal(null);
+        movie.setNameEn("La valle dei sorrisi");
+        movie.setYear(2025);
+
+        WebDriver driver = mockDriver(List.of(
+                result("The Holy Boy (2025)", "/title/tt33382323/")));
+        when(driver.getPageSource()).thenReturn(pageWithJsonLd(
+                "{\"@type\":\"Movie\",\"name\":\"Totally Different\",\"alternateName\":\"Also Different\"}"));
+        when(driver.getTitle()).thenReturn("Totally Different (2025) - IMDb");
+
+        boolean ambiguous = search.searchAndOpen(driver, movie);
+
+        assertFalse(ambiguous);
+        assertNull(movie.getImdbId(), "чужой фильм — imdb_id не записан");
+        assertEquals(MovieStatus.NOT_FOUND, movie.getStatus());
+    }
+
+    @Test
+    void searchAndOpen_singleResultEpisodeType_notFound() {
+        // Правило владельца: серии/эпизоды не учитываем — единственный результат-эпизод
+        // отсекается типом, даже если JSON-LD name совпал с кандидатом.
+        MovieData movie = completeMovie();
+        movie.setName("Долина улыбок");
+        movie.setNameOriginal(null);
+        movie.setNameEn("La valle dei sorrisi");
+        movie.setYear(2025);
+
+        WebDriver driver = mockDriver(List.of(
+                result("The Holy Boy (2025)", "/title/tt9999999/")));
+        when(driver.getPageSource()).thenReturn(pageWithJsonLd(
+                "{\"@type\":\"TVEpisode\",\"name\":\"La valle dei sorrisi\"}"));
+        when(driver.getTitle()).thenReturn("La valle dei sorrisi (2025) - IMDb");
+
+        boolean ambiguous = search.searchAndOpen(driver, movie);
+
+        assertFalse(ambiguous);
+        assertNull(movie.getImdbId(), "imdb_id эпизода не записывается");
+        assertEquals(MovieStatus.NOT_FOUND, movie.getStatus());
+    }
+
+    @Test
+    void searchAndOpen_multipleResultsNoExact_notTrusted_notFound() {
+        // Несколько результатов и ни одного точного — правило «единственного» не срабатывает;
+        // нестрогий выбор промахивается → NOT_FOUND (как раньше).
+        MovieData movie = completeMovie();
+        movie.setName("Долина улыбок");
+        movie.setNameOriginal(null);
+        movie.setNameEn("La valle dei sorrisi");
+        movie.setYear(2025);
+
+        WebDriver driver = mockDriver(List.of(
+                result("Alpha (2019)", "/title/tt10000001/"),
+                result("Beta (2018)", "/title/tt10000002/")));
+
+        boolean ambiguous = search.searchAndOpen(driver, movie);
+
+        assertFalse(ambiguous);
+        assertNull(movie.getImdbId(), "нескольким результатам без точного совпадения не доверяем");
+        assertEquals(MovieStatus.NOT_FOUND, movie.getStatus());
+    }
+
+    @Test
+    void searchAndOpen_singleLegacyFallbackResult_notTrusted_notFound() {
+        // Единственная ссылка пришла НЕ из секции «Titles» (legacy/широкий fallback):
+        // «доверенный единственный» не срабатывает — как раньше, нестрогий выбор → NOT_FOUND.
+        MovieData movie = completeMovie(); // She-Hulk 2022
+        WebDriver driver = bareMockDriver();
+
+        WebElement legacy = result("Some Unrelated Title (2019)", "/title/tt7777777/");
+        when(driver.findElements(any(By.class))).thenAnswer(inv -> {
+            String css = inv.getArgument(0).toString();
+            if (css.contains("find-results-section-title") && css.contains("ipc-title-link-wrapper")) {
+                return Collections.emptyList(); // в секции «Titles» ссылок нет
+            }
+            if (css.contains("find-results-section-title")) {
+                return List.of(mock(WebElement.class)); // секция есть — выдача готова
+            }
+            if (css.contains("ipc-metadata-list-summary-item__t")) {
+                return List.of(legacy); // единственная ссылка — legacy-класс, не из секции
+            }
+            return Collections.emptyList();
+        });
+
+        boolean ambiguous = search.searchAndOpen(driver, movie);
+
+        assertFalse(ambiguous);
+        assertNull(movie.getImdbId(), "одиночка не из секции Titles не считается доверенной");
+        assertEquals(MovieStatus.NOT_FOUND, movie.getStatus());
+    }
+
+    @Test
+    void searchAndOpen_singleResultNameMatchesButYearDiffers_notFound() {
+        // Название совпало, но год на странице отличается больше чем на 1 — это другой фильм.
+        MovieData movie = completeMovie();
+        movie.setName("Долина улыбок");
+        movie.setNameOriginal(null);
+        movie.setNameEn("La valle dei sorrisi");
+        movie.setYear(2025);
+
+        WebDriver driver = mockDriver(List.of(
+                result("The Holy Boy (2010)", "/title/tt33382323/")));
+        when(driver.getPageSource()).thenReturn(pageWithJsonLd(
+                "{\"@type\":\"Movie\",\"name\":\"La valle dei sorrisi\"}"));
+        when(driver.getTitle()).thenReturn("La valle dei sorrisi (2010) - IMDb");
+
+        boolean ambiguous = search.searchAndOpen(driver, movie);
+
+        assertFalse(ambiguous);
+        assertNull(movie.getImdbId());
+        assertEquals(MovieStatus.NOT_FOUND, movie.getStatus());
+    }
+
     @Test
     void ratedStatus_mapsAmbiguityFlag() {
         // Успешная ставка из неоднозначного выбора → RATED_AMBIGUOUS, иначе RATED.
@@ -262,19 +434,24 @@ class ImdbSearchStrategyTest extends ImdbTestSupport {
 
     @Test
     void evaluate_fuzzyStaleResult_fallsBackToNotFound_notError() {
-        // Единственный результат — stale-элемент: «не совпадение» → NOT_FOUND, а не ERROR.
+        // Единственный результат — stale-элемент (попадает в trustedSingle): и текст, и href
+        // недоступны, и click() бросает StaleElementReferenceException — открытие невозможно,
+        // поэтому NOT_FOUND, а не ERROR прогона.
         MovieData movie = completeMovie();
         List<MovieData> movies = new ArrayList<>(List.of(movie));
 
         WebElement stale = mock(WebElement.class);
         when(stale.getText()).thenThrow(new StaleElementReferenceException("stale"));
+        when(stale.getAttribute(anyString())).thenThrow(new StaleElementReferenceException("stale"));
+        doThrow(new StaleElementReferenceException("stale")).when(stale).click();
 
         WebDriver driver = mockDriver(List.of(stale));
 
         exporter.evaluate(movies, driver, new ImportProgress(), () -> { });
 
         assertEquals(MovieStatus.NOT_FOUND, movie.getStatus(),
-                "stale-элемент в выдаче — «не совпадение», а не ошибка прогона");
+                "stale-элемент в выдаче — «не открылся»: NOT_FOUND, а не ERROR прогона");
+        assertNull(movie.getImdbId(), "imdb_id по stale-кандидату не записывается");
         verify(driver, never()).get(org.mockito.ArgumentMatchers.contains("/title/"));
     }
 

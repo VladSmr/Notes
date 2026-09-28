@@ -211,6 +211,72 @@ class ImdbPageVerificationTest extends ImdbTestSupport {
     }
 
     @Test
+    void pageMatchesMovie_jsonLdNameMatches_titleDiffers_accepted() {
+        // kp8624606: <title> локализован («Brand New English Title»), а JSON-LD name
+        // страницы = оригинал «Takopii no genzai» (= english_title) — совпадение по JSON-LD.
+        MovieData movie = completeMovie();
+        movie.setName("Первородный грех Такопи");
+        movie.setNameOriginal(null);
+        movie.setNameEn("Takopii no Genzai");
+        movie.setYear(2025);
+
+        WebDriver driver = titlePageDriver("Brand New English Title (2025) - IMDb", pageWithJsonLd(
+                "{\"@type\":\"TVSeries\",\"name\":\"Takopii no genzai\"}"));
+
+        assertTrue(verifier.pageMatchesMovie(driver, movie),
+                "JSON-LD name совпал с english_title, несмотря на другой <title>");
+    }
+
+    @Test
+    void pageMatchesMovie_jsonLdAlternateNameMatches_accepted() {
+        // JSON-LD alternateName — третий источник названия страницы.
+        MovieData movie = completeMovie();
+        movie.setName("Долина улыбок");
+        movie.setNameOriginal(null);
+        movie.setNameEn("La valle dei sorrisi");
+        movie.setYear(2025);
+
+        WebDriver driver = titlePageDriver("The Holy Boy (2025) - IMDb", pageWithJsonLd(
+                "{\"@type\":\"Movie\",\"name\":\"Something Else Entirely\","
+                        + "\"alternateName\":\"La valle dei sorrisi\"}"));
+
+        assertTrue(verifier.pageMatchesMovie(driver, movie),
+                "JSON-LD alternateName совпал с названием фильма");
+    }
+
+    @Test
+    void pageMatchesMovie_jsonLdNamesDoNotMatch_rejected() {
+        // «Не тому не ставить» не ослаблен: если ни <title>, ни name, ни alternateName
+        // не совпали — фильм чужой.
+        MovieData movie = completeMovie();
+        movie.setName("Долина улыбок");
+        movie.setNameOriginal(null);
+        movie.setNameEn("La valle dei sorrisi");
+        movie.setYear(2025);
+
+        WebDriver driver = titlePageDriver("The Holy Boy (2025) - IMDb", pageWithJsonLd(
+                "{\"@type\":\"Movie\",\"name\":\"Something Else\",\"alternateName\":\"Another Thing\"}"));
+
+        assertFalse(verifier.pageMatchesMovie(driver, movie),
+                "ни один источник названия не совпал — не наш фильм");
+    }
+
+    @Test
+    void extractJsonLdData_collectsTypeAndNamesOnlyFromTitleNodes() {
+        ImdbPageVerifier.JsonLdData data = ImdbPageVerifier.extractJsonLdData(
+                "<script type=\"application/ld+json\">"
+                        + "{\"@type\":\"BreadcrumbList\",\"name\":\"Home\"}</script>"
+                        + "<script type=\"application/ld+json\">"
+                        + "{\"@graph\":[{\"@type\":\"Movie\",\"name\":\"Undertone\","
+                        + "\"alternateName\":\"Полутон\"}]}</script>");
+        assertEquals("Movie", data.type());
+        assertTrue(data.names().contains("Undertone"), "JSON-LD name собран: " + data.names());
+        assertTrue(data.names().contains("Полутон"), "JSON-LD alternateName собран: " + data.names());
+        assertFalse(data.names().contains("Home"),
+                "название BreadcrumbList не подмешивается: " + data.names());
+    }
+
+    @Test
     void evaluate_pendingRow_podcastEpisodePage_fallsBackToSearch() {
         // Прямой заход PENDING+валидный id открыл подкаст-эпизод (название совпадает
         // буквально) — отсечение по типу, сброс id, фолбэк на поиск.
