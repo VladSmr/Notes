@@ -4,6 +4,7 @@ import static ru.importer.notes.movie.Processor.ERROR;
 import static ru.importer.notes.movie.Processor.ERROR_MESSAGE;
 import static ru.importer.notes.movie.Processor.KP_PER_PAGE;
 import static ru.importer.notes.movie.Processor.PARSER_API;
+import static ru.importer.notes.movie.Processor.PARSER_FULL;
 import static ru.importer.notes.movie.Processor.PARSER_SAVED;
 import static ru.importer.notes.movie.Processor.PARSER_SELENIUM;
 import static ru.importer.notes.movie.Processor.STAGE_PARSING;
@@ -17,6 +18,7 @@ import ru.importer.notes.dto.InputData;
 import ru.importer.notes.dto.MovieData;
 import ru.importer.notes.dto.ValidateResult;
 import ru.importer.notes.imdb.auth.AuthManager;
+import ru.importer.notes.kp.KpQuotaExhaustedException;
 import ru.importer.notes.kp.KpRatingsProvider;
 import ru.importer.notes.log.LogFileService;
 import ru.importer.notes.util.ErrorFormatter;
@@ -122,8 +124,14 @@ class ParsingStage {
     private String openParsingBrowser(InputData inputData, String parserType, Model model) {
         KpRatingsProvider provider = processor.resolveProvider(parserType);
 
-        boolean needsBrowser = PARSER_SELENIUM.equals(parserType);
-        if (!needsBrowser) {
+        boolean needsBrowser = PARSER_SELENIUM.equals(parserType) || PARSER_FULL.equals(parserType);
+        if (PARSER_FULL.equals(parserType)) {
+            // Full: нужен и браузер (Selenium-фаза), и токен (API-обогащение).
+            // Токен проверяется ДО старта этапа (как для api).
+            if (!validateApiToken(provider, inputData, model)) {
+                return "method-form";
+            }
+        } else if (!needsBrowser) {
             // API: до показа страницы входа/старта убеждаемся пробным запросом, что токен
             // действителен. 401/403 — фатальные (не ретраятся): возвращаем на форму данных.
             if (!validateApiToken(provider, inputData, model)) {
@@ -142,9 +150,9 @@ class ParsingStage {
             }
         }
 
-        Integer totalRatings = needsBrowser
+        Integer totalRatings = PARSER_FULL.equals(parserType)
                 ? realTotalRatings
-                : provider.fetchTotalRatings(inputData.getKpUserId(), inputData.getApiToken());
+                : (needsBrowser ? realTotalRatings : provider.fetchTotalRatings(inputData.getKpUserId(), inputData.getApiToken()));
 
         // Ноль оценок — стартовать нечего: страница «нет оценок» без кнопки «Начать парсинг».
         if (totalRatings != null && totalRatings == 0) {
@@ -209,7 +217,7 @@ class ParsingStage {
             log.error("startParsing: не найден провайдер для способа: {}", type);
             return ERROR;
         }
-        if (PARSER_API.equals(type) && (apiToken == null || apiToken.isBlank())) {
+        if ((PARSER_API.equals(type) || PARSER_FULL.equals(type)) && (apiToken == null || apiToken.isBlank())) {
             model.addAttribute(ERROR_MESSAGE, "Для способа " + type + " не указан токен");
             log.error("startParsing: для способа {} не указан токен", type);
             return ERROR;
@@ -221,7 +229,7 @@ class ParsingStage {
         }
         // Имя дампа kp-ratings-{userId}-{метод}.csv — для промежуточных и финальных сохранений.
         logFile.setKpDumpName(kpUserId, type);
-        boolean needsBrowser = PARSER_SELENIUM.equals(type);
+        boolean needsBrowser = PARSER_SELENIUM.equals(type) || PARSER_FULL.equals(type);
         if (needsBrowser && authManager.getDriver() == null) {
             model.addAttribute(ERROR_MESSAGE, "Браузер КП не открыт — вернитесь назад и повторите подготовку");
             log.error("startParsing: браузер КП не открыт");
@@ -299,6 +307,13 @@ class ParsingStage {
             appResult.setMovies(dumpable);
             progress.complete(STAGE_PARSING, appResult);
             log.info("=== Парсинг завершён ===");
+        } catch (KpQuotaExhaustedException e) {
+            // Частичный дамп уже сохранён провайдером (onBatch в enrichPhase).
+            log.warn("Парсинг: квота токена исчерпана — сохранён частичный дамп");
+            AppResult errorResult = new AppResult();
+            errorResult.setErrorMessage(quotaErrorMessage());
+            errorResult.setErrorDetails(ErrorFormatter.format(e));
+            progress.complete(STAGE_PARSING, errorResult);
         } catch (Exception e) {
             log.error("Парсинг провалился: {}", e.getMessage(), e);
             try {
@@ -335,6 +350,16 @@ class ParsingStage {
             }
         }
         return "Parsing failed: " + e.getMessage();
+    }
+
+    /**
+     * Сообщение при исчерпании квоты API Кинопоиска. Дамп уже сохранён провайдером.
+     * Содержит имя файла и рекомендацию использовать «полный» способ для resume.
+     */
+    private String quotaErrorMessage() {
+        return "Квота токена Кинопоиска на сегодня исчерпана. "
+                + "Дамп сохранён: " + logFile.getKpDumpFileName() + ". "
+                + "Продолжите завтра — способ «полный» допишет новые фильмы и докрутит оставшиеся.";
     }
 
 }

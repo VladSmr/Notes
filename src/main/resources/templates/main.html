@@ -23,7 +23,7 @@
 <div class="container">
     <a class="top-link" href="/notes/proset">Проставление оценок на IMDB &rarr;</a>
     <h1>Парсинг оценок с Кинопоиска</h1>
-    <p>Есть два способа:</p>
+    <p>Есть три способа:</p>
     <div class="notice" th:if="${processRunning}">
         Сейчас уже идёт процесс (<strong th:text="${processStage}">?</strong>). Запуск нового процесса возможен только после его завершения.
     </div>
@@ -47,6 +47,15 @@
                 <span class="desc">Быстрый парсинг через kinopoiskapiunofficial.tech без браузера.
                     API отдаёт <b>почти все</b> оценки пользователя.</span>
                 <span class="needs">Нужно: ID пользователя КП, API-токен</span>
+            </span>
+        </label>
+
+        <label class="method" id="m-full">
+            <input type="radio" name="parserType" value="full" onchange="selectMethod(this)">
+            <span class="body">
+                <span class="title">3. Полный (браузер + API)</span>
+                <span class="desc">Страницы оценок в Chrome + обогащение карточек через API. Лучший результат для <b>любого</b> количества оценок. Работает дольше, но даёт максимально полные данные.</span>
+                <span class="needs">Нужно: ID пользователя КП, вход в Кинопоиск в Chrome, API-токен</span>
             </span>
         </label>
 

@@ -17,7 +17,7 @@
     <h1>Парсинг: вход в Кинопоиск</h1>
 
     <div class="step" th:if="${totalRatings != null or realTotalRatings != null}">
-        <p th:if="${parserType == 'selenium'}">Всего оценок на Кинопоиске: <strong th:text="${realTotalRatings != null ? realTotalRatings : totalRatings}">0</strong>.</p>
+        <p th:if="${parserType == 'selenium' or parserType == 'full'}">Всего оценок на Кинопоиске: <strong th:text="${realTotalRatings != null ? realTotalRatings : totalRatings}">0</strong>.</p>
         <p th:if="${parserType == 'api'}">По данным API: <strong th:text="${totalRatings}">0</strong> оценок.</p>
     </div>
 
@@ -25,12 +25,16 @@
         <p><span class="step-num">1</span>
             <span th:if="${parserType == 'selenium'}">В новом окне Chrome открылась <strong>страница ваших оценок на Кинопоиске</strong>.</span>
             <span th:if="${parserType == 'api'}">Парсинг пойдёт через API — браузер не открывается.</span>
+            <span th:if="${parserType == 'full'}">В новом окне Chrome открылась <strong>страница ваших оценок на Кинопоиске</strong> — с неё начнётся загрузка.</span>
         </p>
-        <p th:if="${parserType == 'selenium'}">Если появился вход через Яндекс или редирект SSO — войдите или дождитесь загрузки страницы с вашими оценками.</p>
-        <p th:if="${parserType == 'selenium'}">Закройте всплывающую рекламу, если она появится.</p>
+        <p th:if="${parserType == 'selenium' or parserType == 'full'}">Если появился вход через Яндекс или редирект SSO — войдите или дождитесь загрузки страницы с вашими оценками.</p>
+        <p th:if="${parserType == 'selenium' or parserType == 'full'}">Закройте всплывающую рекламу, если она появится.</p>
     </div>
-    <div class="step" th:if="${parserType == 'selenium'}">
+    <div class="step" th:if="${parserType == 'selenium' or parserType == 'full'}">
         <p><span class="step-num">2</span> Когда страница с оценками Кинопоиска готова — нажмите кнопку ниже, чтобы начать парсинг.</p>
+    </div>
+    <div class="step" th:if="${parserType == 'full'}">
+        <p><span class="step-num">3</span> После загрузки страниц оценок начнётся <strong>обогащение данных через API Кинопоиска</strong> (imdbId, оригинальные названия, годы). Это может занять время — не закрывайте браузер.</p>
     </div>
 
     <div class="notice">

@@ -62,6 +62,16 @@ class ApiKpRatingsProviderTest {
     }
 
     @Test
+    void mapItem_tvShowGoesToSeriesUrl() {
+        // Баг: TV_SHOW ранее вёл на /film/ вместо /series/.
+        JsonNode item = json("{\"kinopoiskId\":98765,\"nameRu\":\"Ток-шоу\",\"nameOriginal\":\"Talk Show\"," +
+                "\"year\":\"2023\",\"type\":\"TV_SHOW\",\"userRating\":7}");
+
+        MovieData movie = provider.mapItem(item);
+        assertEquals("https://www.kinopoisk.ru/series/98765/", movie.getKpUrl());
+    }
+
+    @Test
     void mapItem_shouldFallbackToNameEnWhenNoNameOriginal() {
         JsonNode item = json("{\"kinopoiskId\":5,\"nameRu\":\"Фильм\",\"nameEn\":\"Fallback Title\"," +
                 "\"year\":\"2001\",\"type\":\"FILM\",\"userRating\":7}");

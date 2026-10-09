@@ -48,14 +48,8 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
             "Армения", "Азербайджан", "Грузия", "Киргизия", "Кыргызстан", "Молдова",
             "Молдавия", "Таджикистан", "Туркменистан", "Туркмения", "Узбекистан");
     private static final int MAX_ATTEMPTS = 3;
-    /**
-     * Минимальный интервал между запросами: действует на ВСЕ запросы (страницы и валидация годов),
-     * не больше 2 запросов в секунду — ниже лимита эндпоинта votes и квоты тарифа.
-     */
-    private static final long MIN_REQUEST_INTERVAL_NANOS = 600_000_000L;
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
-    private long lastRequestNanos;
 
     @Autowired
     public ApiKpRatingsProvider(ObjectMapper objectMapper) {
@@ -368,7 +362,7 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
         movie.setKpRating(item.path("userRating").asInt(0));
 
         String type = item.path("type").asText("FILM");
-        boolean series = type != null && type.contains("SERIES");
+        boolean series = type != null && (type.contains("SERIES") || type.equals("TV_SHOW"));
         movie.setKpUrl("https://www.kinopoisk.ru/" + (series ? "series/" : "film/") + kpId + "/");
 
         if (nameOriginal == null && nameEn == null) {
@@ -385,14 +379,7 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
      * Выдерживает лимит API: не чаще 2 запросов в секунду.
      */
     private void rateLimit() {
-        long now = System.nanoTime();
-        if (lastRequestNanos != 0) {
-            long elapsed = now - lastRequestNanos;
-            if (elapsed < MIN_REQUEST_INTERVAL_NANOS) {
-                ThreadSleepUtil.sleepUninterruptibly((MIN_REQUEST_INTERVAL_NANOS - elapsed) / 1_000_000L + 1);
-            }
-        }
-        lastRequestNanos = System.nanoTime();
+        ApiRateLimiter.waitIfNeeded();
     }
 
 }

@@ -23,6 +23,7 @@
     <div class="info" th:switch="${parserType}">
         <span th:case="'selenium'"><b>Браузер:</b> парсинг всех оценок в Chrome. В браузере нужно будет войти в Кинопоиск.</span>
         <span th:case="'api'"><b>Kinopoisk API:</b> быстрый парсинг через API — отдаёт почти все оценки. Браузер для парсинга не используется.</span>
+        <span th:case="'full'"><b>Полный (браузер + API):</b> страницы оценок в Chrome + обогащение карточек через API. Лучший результат для любого количества оценок. Нужен вход в Кинопоиск в браузере и API-токен.</span>
     </div>
 
     <form action="/notes/submit" method="post">
@@ -32,7 +33,7 @@
         <input type="number" id="kpUserId" name="kpUserId" required placeholder="например, 12345678" th:value="${kpUserId}">
         <div class="hint">Находится в URL вашего профиля КП: https://www.kinopoisk.ru/user/<strong>USER_ID</strong>/</div>
 
-        <div th:if="${parserType == 'api'}">
+        <div th:if="${parserType == 'api' or parserType == 'full'}">
             <label for="apiToken">API-токен Кинопоиска:</label>
             <input type="text" id="apiToken" name="apiToken" required placeholder="например, xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" th:value="${apiToken}">
             <div class="hint">Получить можно на kinopoiskapiunofficial.tech (профиль → API-ключ). Регистрация бесплатная</div>

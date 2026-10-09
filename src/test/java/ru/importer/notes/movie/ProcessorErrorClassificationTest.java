@@ -4,6 +4,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
 import org.junit.jupiter.api.Test;
+import ru.importer.notes.kp.KpQuotaExhaustedException;
 import ru.importer.notes.log.KpDumpWriteException;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -66,5 +67,12 @@ class ProcessorErrorClassificationTest {
         RuntimeException mid = new RuntimeException("wrap", root);
         KpDumpWriteException ex = new KpDumpWriteException("top", mid);
         assertTrue(Processor.isPermissionOrDirError(ex));
+    }
+
+    /** KpQuotaExhaustedException — не ошибка прав/директории (файл уже сохранён). */
+    @Test
+    void kpQuotaExhausted_isNotPermissionOrDirError() {
+        KpQuotaExhaustedException ex = new KpQuotaExhaustedException("Квота исчерпана");
+        assertFalse(Processor.isPermissionOrDirError(ex));
     }
 }

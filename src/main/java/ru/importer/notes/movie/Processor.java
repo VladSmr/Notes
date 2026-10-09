@@ -36,6 +36,7 @@ public class Processor {
     static final String PARSER_API = "api";
     static final String PARSER_SAVED = "saved";
     static final String PARSER_SELENIUM = "selenium";
+    static final String PARSER_FULL = "full";
     static final String STAGE_PARSING = "parsing";
     static final String STAGE_PROSET = "proset";
     private final AuthManager authManager;
@@ -92,7 +93,7 @@ public class Processor {
             return null;
         }
         String t = parserType.trim().toLowerCase();
-        if (PARSER_SELENIUM.equals(t) || PARSER_API.equals(t) || PARSER_SAVED.equals(t)) {
+        if (PARSER_SELENIUM.equals(t) || PARSER_API.equals(t) || PARSER_SAVED.equals(t) || PARSER_FULL.equals(t)) {
             return t;
         }
         return null;
@@ -213,9 +214,9 @@ public class Processor {
             result.setHasError(true);
             return result;
         }
-        if (PARSER_API.equals(parserType)
+        if ((PARSER_API.equals(parserType) || PARSER_FULL.equals(parserType))
                 && (inputData.getApiToken() == null || inputData.getApiToken().isBlank())) {
-            result.setErrorMessage("empty KP API token (нужен для способа API)");
+            result.setErrorMessage("empty KP API token (нужен для способа " + parserType + ")");
             result.setHasError(true);
         }
         return result;

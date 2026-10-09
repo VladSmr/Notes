@@ -14,6 +14,7 @@
 
     <div class="method-badge" th:if="${parserType == 'api'}">Способ: API Кинопоиска</div>
     <div class="method-badge" th:if="${parserType == 'selenium'}">Способ: браузер (Selenium)</div>
+    <div class="method-badge" th:if="${parserType == 'full'}">Способ: браузер + API</div>
 
     <div class="progress-bar">
         <div class="progress-fill" id="progress-fill"></div>
