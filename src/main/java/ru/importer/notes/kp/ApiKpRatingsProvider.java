@@ -50,20 +50,31 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
     private static final int MAX_ATTEMPTS = 3;
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
+    private final ApiRateLimiter rateLimiter;
 
     @Autowired
-    public ApiKpRatingsProvider(ObjectMapper objectMapper) {
+    public ApiKpRatingsProvider(ObjectMapper objectMapper, ApiRateLimiter rateLimiter) {
         this(objectMapper, RestClient.builder()
                                      .baseUrl("https://kinopoiskapiunofficial.tech/api")
-                                     .build());
+                                     .build(),
+             rateLimiter);
+    }
+
+    /** Для тестов (subclass-паттерн): только ObjectMapper, реальный rateLimiter. */
+    ApiKpRatingsProvider(ObjectMapper objectMapper) {
+        this(objectMapper, RestClient.builder()
+                                     .baseUrl("https://kinopoiskapiunofficial.tech/api")
+                                     .build(),
+             new ApiRateLimiter());
     }
 
     /**
-     * Для тестов: подменяет HTTP-слой моком RestClient.
+     * Для тестов: подменяет HTTP-слой моком RestClient и/или rateLimiter.
      */
-    ApiKpRatingsProvider(ObjectMapper objectMapper, RestClient restClient) {
+    ApiKpRatingsProvider(ObjectMapper objectMapper, RestClient restClient, ApiRateLimiter rateLimiter) {
         this.objectMapper = objectMapper;
         this.restClient = restClient;
+        this.rateLimiter = rateLimiter;
     }
 
     private static String blankToNull(String value) {
@@ -120,7 +131,8 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
      */
     protected JsonNode fetchFilm(Long filmId, String apiToken) {
         return fetchJsonWithRetry(apiToken, "фильм " + filmId,
-                                  () -> restClient.get().uri("/v2.2/films/{id}", filmId));
+                                  () -> restClient.get().uri("/v2.2/films/{id}", filmId),
+                                  ApiRateLimiter.PROFILE_FILMS);
     }
 
     /**
@@ -132,10 +144,16 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
      */
     private JsonNode fetchJsonWithRetry(String apiToken, String label,
                                         Supplier<RestClient.RequestHeadersSpec<?>> request) {
+        return fetchJsonWithRetry(apiToken, label, request, ApiRateLimiter.PROFILE_VOTES);
+    }
+
+    private JsonNode fetchJsonWithRetry(String apiToken, String label,
+                                        Supplier<RestClient.RequestHeadersSpec<?>> request,
+                                        String rateLimitProfile) {
         Exception last = null;
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
-                rateLimit();
+                rateLimiter.waitIfNeeded(rateLimitProfile);
                 String body = request.get()
                                      .header("X-API-KEY", apiToken)
                                      .header("Content-Type", "application/json")
@@ -375,11 +393,4 @@ public class ApiKpRatingsProvider implements KpRatingsProvider {
         return movie;
     }
 
-    /**
-     * Выдерживает лимит API: не чаще 2 запросов в секунду.
-     */
-    private void rateLimit() {
-        ApiRateLimiter.waitIfNeeded();
     }
-
-}

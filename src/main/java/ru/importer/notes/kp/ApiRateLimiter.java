@@ -1,34 +1,71 @@
 package ru.importer.notes.kp;
 
+import java.util.concurrent.atomic.AtomicLong;
+import org.springframework.stereotype.Component;
 import ru.importer.notes.util.ThreadSleepUtil;
 
 /**
- * Единый rate-limiter для всех API-вызовов Кинопоиска (страницы оценок, обогащение карточек).
- * Действует на ВСЕ запросы: не чаще 2 запросов в секунду — ниже лимита эндпоинта
- * и квоты тарифа. Thread-safe: каждый вызов {@link #waitIfNeeded()} синхронизирован.
+ * Rate-limiter для API-вызовов Кинопоиска. Два профиля:
+ * <ul>
+ *   <li><b>votes</b> — эндпоинт {@code /v1/kp_users/.../votes}: лимит 2 rps → 600 мс</li>
+ *   <li><b>films</b> — эндпоинт {@code /v2.2/films/{id}}: глобальный тариф ~25 rps → 50 мс (запас)</li>
+ * </ul>
+ * Thread-safe: синхронизация через {@code synchronized} на экземпляре.
  */
-public final class ApiRateLimiter {
+@Component
+public class ApiRateLimiter {
 
-    /** Минимальный интервал: не чаще 2 запросов в секунду. */
-    private static final long MIN_INTERVAL_NANOS = 600_000_000L;
-    /** Время последнего запроса (nanos). */
-    private static long lastRequestNanos = 0L;
+    /** Профиль «votes» — медленный (2 rps), для {@code /v1/kp_users/...}. */
+    public static final String PROFILE_VOTES = "votes";
+    /** Профиль «films» — быстрый (20 rps), для {@code /v2.2/films/{id}}. */
+    public static final String PROFILE_FILMS = "films";
 
-    private ApiRateLimiter() {}
+    private final long votesIntervalNanos;
+    private final long filmsIntervalNanos;
+    private final AtomicLong lastVotesNanos = new AtomicLong(0L);
+    private final AtomicLong lastFilmsNanos = new AtomicLong(0L);
+
+    /** Production-конструктор: стандартные интервалы. */
+    public ApiRateLimiter() {
+        this(600_000_000L, 50_000_000L);
+    }
 
     /**
-     * Ждёт, если с предыдущего запроса прошло менее 0.6 с (не чаще 2 req/sec).
-     * Вызывать перед каждым HTTP-запросом к API Кинопоиска.
+     * Конструктор для тестов: подменяет интервалы (мок времени).
+     *
+     * @param votesIntervalNanos интервал votes в наносекундах
+     * @param filmsIntervalNanos интервал films в наносекундах
      */
-    public static synchronized void waitIfNeeded() {
+    public ApiRateLimiter(long votesIntervalNanos, long filmsIntervalNanos) {
+        this.votesIntervalNanos = votesIntervalNanos;
+        this.filmsIntervalNanos = filmsIntervalNanos;
+    }
+
+    /**
+     * Ждёт, если с предыдущего запроса того же профиля прошло менее интервала.
+     *
+     * @param profile {@link #PROFILE_VOTES} или {@link #PROFILE_FILMS}
+     */
+    public synchronized void waitIfNeeded(String profile) {
+        long interval = PROFILE_FILMS.equals(profile) ? filmsIntervalNanos : votesIntervalNanos;
+        AtomicLong lastNanos = PROFILE_FILMS.equals(profile) ? lastFilmsNanos : lastVotesNanos;
+
         long now = System.nanoTime();
-        if (lastRequestNanos != 0L) {
-            long elapsed = now - lastRequestNanos;
-            if (elapsed < MIN_INTERVAL_NANOS) {
-                long sleepMs = (MIN_INTERVAL_NANOS - elapsed) / 1_000_000L + 1;
+        long prev = lastNanos.get();
+        if (prev != 0L) {
+            long elapsed = now - prev;
+            if (elapsed < interval) {
+                long sleepMs = (interval - elapsed) / 1_000_000L + 1;
                 ThreadSleepUtil.sleepUninterruptibly(sleepMs);
+                now = System.nanoTime(); // обновить после sleep
             }
         }
-        lastRequestNanos = System.nanoTime();
+        lastNanos.set(now);
+    }
+
+    /** Сброс состояния — для изоляции тестов (вызывать в @BeforeEach). */
+    public void reset() {
+        lastVotesNanos.set(0L);
+        lastFilmsNanos.set(0L);
     }
 }

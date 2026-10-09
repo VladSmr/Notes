@@ -2,6 +2,7 @@ package ru.importer.notes.kp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
+import org.springframework.web.client.RestClient;
 import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -22,7 +23,10 @@ class ApiKpRatingsProviderRealTest {
     @TempDir
     Path tempDir;
 
-    private final ApiKpRatingsProvider provider = new ApiKpRatingsProvider(new ObjectMapper());
+    private final ApiKpRatingsProvider provider = new ApiKpRatingsProvider(
+            new ObjectMapper(),
+            RestClient.builder().baseUrl("https://kinopoiskapiunofficial.tech/api").build(),
+            new ApiRateLimiter());
 
     private String token() {
         String t = System.getProperty("kp.api.token");

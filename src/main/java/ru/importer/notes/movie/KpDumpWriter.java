@@ -128,17 +128,16 @@ class KpDumpWriter {
     }
 
     /**
-     * Проверяет, что строка — настоящий фильм из выгрузки оценок КП: есть название,
-     * положительная оценка и положительный kp_id. Легитимные строки всегда содержат все три.
+     * Проверяет, что строка — настоящий фильм из выгрузки оценок КП: есть название
+     * и положительный kp_id. Оценка может быть 0 (не распарсилась с DOM) — фильм
+     * всё равно пишется в дамп, чтобы не потеряться; при проставлении он получит
+     * статус INCOMPLETE_DATA.
      *
      * @return причина пропуска или null, если строка валидна
      */
     private static String invalidDumpReason(MovieData m) {
         if (m.getName() == null || m.getName().isBlank()) {
             return "пустое название";
-        }
-        if (m.getKpRating() <= 0) {
-            return "нет оценки (rating <= 0)";
         }
         if (m.getKpId() == null || m.getKpId() <= 0) {
             return "нет kp_id";
@@ -160,8 +159,8 @@ class KpDumpWriter {
         for (MovieData m : movies) {
             String reason = invalidDumpReason(m);
             if (reason != null) {
-                log.warn("Парсинг: строка пропущена при записи дампа ({}): name='{}', rating={}, kpId={}",
-                         reason, m.getName(), m.getKpRating(), m.getKpId());
+                log.warn("Парсинг: строка пропущена при записи дампа ({}): name='{}', kpId={}",
+                         reason, m.getName(), m.getKpId());
                 continue;
             }
             valid.add(m);

@@ -14,7 +14,6 @@ import org.springframework.web.client.RestClientResponseException;
 import ru.importer.notes.dto.MovieData;
 import ru.importer.notes.movie.ImportProgress;
 import ru.importer.notes.util.ThreadSleepUtil;
-import ru.importer.notes.kp.ApiRateLimiter;
 
 /**
  * Обогащение данных фильма через {@code GET /v2.2/films/{id}}: nameOriginal, nameEn,
@@ -34,18 +33,35 @@ public class ApiFilmCardEnricher {
 
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
+    private final ApiRateLimiter rateLimiter;
 
+    /** Production-конструктор: RestClient создаётся по умолчанию. */
     @Autowired
-    public ApiFilmCardEnricher(ObjectMapper objectMapper) {
+    public ApiFilmCardEnricher(ObjectMapper objectMapper, ApiRateLimiter rateLimiter) {
         this(objectMapper, RestClient.builder()
                                     .baseUrl("https://kinopoiskapiunofficial.tech/api")
-                                    .build());
+                                    .build(),
+             rateLimiter);
     }
 
-    /** Для тестов: подменяет HTTP-слой моком RestClient. */
+    /** Для тестов (subclass-паттерн): только ObjectMapper, rateLimiter = null (subclass переопределяет fetchFilm). */
+    ApiFilmCardEnricher(ObjectMapper objectMapper) {
+        this(objectMapper, RestClient.builder()
+                                    .baseUrl("https://kinopoiskapiunofficial.tech/api")
+                                    .build(),
+             new ApiRateLimiter());
+    }
+
+    /** Для тестов: подменяет HTTP-слой моком RestClient, rateLimiter — real instance. */
     ApiFilmCardEnricher(ObjectMapper objectMapper, RestClient restClient) {
+        this(objectMapper, restClient, new ApiRateLimiter());
+    }
+
+    /** Для тестов: подменяет HTTP-слой моком RestClient и/или rateLimiter. */
+    ApiFilmCardEnricher(ObjectMapper objectMapper, RestClient restClient, ApiRateLimiter rateLimiter) {
         this.objectMapper = objectMapper;
         this.restClient = restClient;
+        this.rateLimiter = rateLimiter;
     }
 
     /**
@@ -196,8 +212,8 @@ public class ApiFilmCardEnricher {
         throw new RuntimeException("Не удалось получить " + label + " с API Кинопоиска", last);
     }
 
-    /** Rate limit: единый на все API-вызовы. */
+    /** Rate limit: профиль films (~20 rps). */
     private void rateLimit() {
-        ApiRateLimiter.waitIfNeeded();
+        rateLimiter.waitIfNeeded(ApiRateLimiter.PROFILE_FILMS);
     }
 }

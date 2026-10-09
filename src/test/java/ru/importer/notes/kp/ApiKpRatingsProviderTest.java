@@ -2,6 +2,7 @@ package ru.importer.notes.kp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.web.client.RestClient;
 import org.junit.jupiter.api.Test;
 import ru.importer.notes.dto.MovieData;
 
@@ -11,7 +12,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class ApiKpRatingsProviderTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final ApiKpRatingsProvider provider = new ApiKpRatingsProvider(objectMapper);
+    private final ApiKpRatingsProvider provider = new ApiKpRatingsProvider(
+            objectMapper,
+            RestClient.builder().baseUrl("https://kinopoiskapiunofficial.tech/api").build(),
+            new ApiRateLimiter());
 
     private JsonNode json(String s) {
         try {

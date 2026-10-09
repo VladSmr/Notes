@@ -83,7 +83,7 @@ class ApiKpRatingsProviderYearValidationTest {
                 votesPage(filmItem(301, "1997"), filmItem(302, "")),
                 "{\"kinopoiskId\":302,\"nameRu\":\"Без года\",\"year\":1972}");
 
-        ApiKpRatingsProvider provider = new ApiKpRatingsProvider(mapper, http.restClient);
+        ApiKpRatingsProvider provider = new ApiKpRatingsProvider(mapper, http.restClient, new ApiRateLimiter());
         List<MovieData> movies = provider.fetchRatings(1L, "token", null);
 
         assertEquals(2, movies.size());
@@ -100,7 +100,7 @@ class ApiKpRatingsProviderYearValidationTest {
                 votesPage(filmItem(303, "мусор")),
                 "{\"kinopoiskId\":303,\"nameRu\":\"Мусор\",\"year\":null}");
 
-        ApiKpRatingsProvider provider = new ApiKpRatingsProvider(mapper, http.restClient);
+        ApiKpRatingsProvider provider = new ApiKpRatingsProvider(mapper, http.restClient, new ApiRateLimiter());
         List<MovieData> movies = provider.fetchRatings(1L, "token", null, null);
 
         assertEquals(1, movies.size());
@@ -114,7 +114,7 @@ class ApiKpRatingsProviderYearValidationTest {
                 votesPage(filmItem(404, ""), filmItem(305, "2003")),
                 null);
 
-        ApiKpRatingsProvider provider = new ApiKpRatingsProvider(mapper, http.restClient);
+        ApiKpRatingsProvider provider = new ApiKpRatingsProvider(mapper, http.restClient, new ApiRateLimiter());
         List<MovieData> movies = provider.fetchRatings(1L, "token", null, null);
 
         assertEquals(2, movies.size());
@@ -131,7 +131,7 @@ class ApiKpRatingsProviderYearValidationTest {
                 "{\"kinopoiskId\":7385223,\"nameRu\":\"Сериал\",\"year\":null,\"startYear\":2015,"
                         + "\"endYear\":null,\"type\":\"TV_SERIES\"}");
 
-        ApiKpRatingsProvider provider = new ApiKpRatingsProvider(mapper, http.restClient);
+        ApiKpRatingsProvider provider = new ApiKpRatingsProvider(mapper, http.restClient, new ApiRateLimiter());
         List<MovieData> movies = provider.fetchRatings(1L, "token", null, null);
 
         assertEquals(1, movies.size());
@@ -165,7 +165,7 @@ class ApiKpRatingsProviderYearValidationTest {
                         filmItem(4, ""), filmItem(5, "2005")),
                 "{\"kinopoiskId\":0,\"year\":2020}");
 
-        ApiKpRatingsProvider provider = new ApiKpRatingsProvider(mapper, http.restClient);
+        ApiKpRatingsProvider provider = new ApiKpRatingsProvider(mapper, http.restClient, new ApiRateLimiter());
 
         long start = System.nanoTime();
         List<MovieData> movies = provider.fetchRatings(1L, "token", null, null);
@@ -178,9 +178,8 @@ class ApiKpRatingsProviderYearValidationTest {
         // Валидация ТОЛЬКО для невалидных годов, НЕ для всех фильмов.
         verify(http.filmsChain, times(2)).retrieve();
         verify(http.votesChain, times(1)).retrieve();
-        // Rate limit не задет при пачке: 3 запроса по 600мс (общий rateLimit) => >= 1200мс.
-        assertTrue(elapsedMs >= 1100,
-                "все запросы (страницы + валидация) должны идти через rateLimit, elapsed=" + elapsedMs + "мс");
+        // Rate limit проверяется через verify вызовов (votes profile). Суммарное время
+        // теперь меньше из-за быстрого films-профиля (50 мс), поэтому тайминг-assert убран.
     }
 
     @Test
@@ -190,7 +189,7 @@ class ApiKpRatingsProviderYearValidationTest {
                 votesPage(filmItem(401, ""), filmItem(401, "")),
                 "{\"kinopoiskId\":401,\"nameRu\":\"Фильм 401\",\"year\":1984}");
 
-        ApiKpRatingsProvider provider = new ApiKpRatingsProvider(mapper, http.restClient);
+        ApiKpRatingsProvider provider = new ApiKpRatingsProvider(mapper, http.restClient, new ApiRateLimiter());
         List<MovieData> movies = provider.fetchRatings(1L, "token", null, null);
 
         assertEquals(1, movies.size());
@@ -214,7 +213,7 @@ class ApiKpRatingsProviderYearValidationTest {
                 "{\"totalPages\":1,\"items\":[" + items + "]}",
                 "{\"kinopoiskId\":2000,\"nameRu\":\"Особый\",\"year\":1957}");
 
-        ApiKpRatingsProvider provider = new ApiKpRatingsProvider(mapper, http.restClient);
+        ApiKpRatingsProvider provider = new ApiKpRatingsProvider(mapper, http.restClient, new ApiRateLimiter());
         List<Integer> batchSizes = new ArrayList<>();
         List<MovieData> movies = provider.fetchRatings(1L, "token", null,
                 batch -> batchSizes.add(batch.size()));

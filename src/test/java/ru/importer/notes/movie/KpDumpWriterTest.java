@@ -38,24 +38,27 @@ class KpDumpWriterTest {
     }
 
     @Test
-    void saveKpDumpSafelyForParsing_shouldSkipRowsWithoutNameRatingOrKpId() throws IOException {
-        // Путь ПАРСИНГА: строки-не-фильмы не должны попадать в дамп.
+    void saveKpDumpSafelyForParsing_shouldSkipRowsWithoutNameOrKpId_ratingZeroIsAllowed() throws IOException {
+        // Путь ПАРСИНГА: строки-не-фильмы (пустое название / нет kpId) не должны попадать в дамп.
+        // rating=0 — ПИШЕТСЯ: фильм «Бесславные ублюдки» с rating=0 не теряется.
         writer.saveKpDumpSafelyForParsing(List.of(
                 movie("Хороший", 8, 111L),
                 movie("", 7, 222L),
                 movie(null, 6, 333L),
-                movie("Без рейтинга", 0, 444L),
+                movie("Без рейтинга", 0, 444L),     // ← пишется (rating=0 — не фильтр)
                 movie("Без kp_id", 5, null),
                 movie("Отрицательный kp_id", 5, -1L),
                 movie("Ещё хороший", 9, 555L)
         ));
 
         List<String[]> rows = logFile.readKpDump();
-        assertEquals(2, rows.size(), "в дамп попали только валидные строки");
+        assertEquals(3, rows.size(), "в дамп попали валидные строки + rating=0");
         assertEquals("Хороший", rows.get(0)[0]);
         assertEquals("111", rows.get(0)[5]);
-        assertEquals("Ещё хороший", rows.get(1)[0]);
-        assertEquals("555", rows.get(1)[5]);
+        assertEquals("Без рейтинга", rows.get(1)[0]);
+        assertEquals("444", rows.get(1)[5]);
+        assertEquals("Ещё хороший", rows.get(2)[0]);
+        assertEquals("555", rows.get(2)[5]);
     }
 
     @Test
