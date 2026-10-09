@@ -1,6 +1,5 @@
 package ru.importer.notes.kp;
 
-import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.stereotype.Component;
 import ru.importer.notes.util.ThreadSleepUtil;
 
@@ -10,7 +9,7 @@ import ru.importer.notes.util.ThreadSleepUtil;
  *   <li><b>votes</b> — эндпоинт {@code /v1/kp_users/.../votes}: лимит 2 rps → 600 мс</li>
  *   <li><b>films</b> — эндпоинт {@code /v2.2/films/{id}}: глобальный тариф ~25 rps → 50 мс (запас)</li>
  * </ul>
- * Thread-safe: синхронизация через {@code synchronized} на экземпляре.
+ * Каждый профиль — свой объект-блокировки: votes и films не сериализуют друг друга.
  */
 @Component
 public class ApiRateLimiter {
@@ -22,8 +21,14 @@ public class ApiRateLimiter {
 
     private final long votesIntervalNanos;
     private final long filmsIntervalNanos;
-    private final AtomicLong lastVotesNanos = new AtomicLong(0L);
-    private final AtomicLong lastFilmsNanos = new AtomicLong(0L);
+
+    /** Блокировки на профиль — независимая синхронизация: votes и films не блокируют друг друга. */
+    private final Object votesLock = new Object();
+    private final Object filmsLock = new Object();
+
+    /** Метки времени последнего запроса (nanos, 0 = первый вызов). */
+    private long lastVotesNanos = 0L;
+    private long lastFilmsNanos = 0L;
 
     /** Production-конструктор: стандартные интервалы. */
     public ApiRateLimiter() {
@@ -43,29 +48,34 @@ public class ApiRateLimiter {
 
     /**
      * Ждёт, если с предыдущего запроса того же профиля прошло менее интервала.
+     * Неизвестный профиль → {@link IllegalArgumentException}.
      *
      * @param profile {@link #PROFILE_VOTES} или {@link #PROFILE_FILMS}
      */
-    public synchronized void waitIfNeeded(String profile) {
-        long interval = PROFILE_FILMS.equals(profile) ? filmsIntervalNanos : votesIntervalNanos;
-        AtomicLong lastNanos = PROFILE_FILMS.equals(profile) ? lastFilmsNanos : lastVotesNanos;
-
-        long now = System.nanoTime();
-        long prev = lastNanos.get();
-        if (prev != 0L) {
-            long elapsed = now - prev;
-            if (elapsed < interval) {
-                long sleepMs = (interval - elapsed) / 1_000_000L + 1;
-                ThreadSleepUtil.sleepUninterruptibly(sleepMs);
-                now = System.nanoTime(); // обновить после sleep
+    public void waitIfNeeded(String profile) {
+        if (!PROFILE_VOTES.equals(profile) && !PROFILE_FILMS.equals(profile)) {
+            throw new IllegalArgumentException("Неизвестный профиль: " + profile
+                    + ". Ожидается: " + PROFILE_VOTES + " или " + PROFILE_FILMS);
+        }
+        boolean films = PROFILE_FILMS.equals(profile);
+        Object lock = films ? filmsLock : votesLock;
+        long interval = films ? filmsIntervalNanos : votesIntervalNanos;
+        synchronized (lock) {
+            long now = System.nanoTime();
+            long prev = films ? lastFilmsNanos : lastVotesNanos;
+            if (prev != 0L) {
+                long elapsed = now - prev;
+                if (elapsed < interval) {
+                    long sleepMs = (interval - elapsed) / 1_000_000L + 1;
+                    ThreadSleepUtil.sleepUninterruptibly(sleepMs);
+                    now = System.nanoTime(); // обновить после sleep
+                }
+            }
+            if (films) {
+                lastFilmsNanos = now;
+            } else {
+                lastVotesNanos = now;
             }
         }
-        lastNanos.set(now);
-    }
-
-    /** Сброс состояния — для изоляции тестов (вызывать в @BeforeEach). */
-    public void reset() {
-        lastVotesNanos.set(0L);
-        lastFilmsNanos.set(0L);
     }
 }

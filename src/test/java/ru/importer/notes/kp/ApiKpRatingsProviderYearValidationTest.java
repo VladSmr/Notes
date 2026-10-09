@@ -167,9 +167,7 @@ class ApiKpRatingsProviderYearValidationTest {
 
         ApiKpRatingsProvider provider = new ApiKpRatingsProvider(mapper, http.restClient, new ApiRateLimiter());
 
-        long start = System.nanoTime();
         List<MovieData> movies = provider.fetchRatings(1L, "token", null, null);
-        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
 
         assertEquals(5, movies.size());
         assertEquals(2020, movies.get(1).getYear());

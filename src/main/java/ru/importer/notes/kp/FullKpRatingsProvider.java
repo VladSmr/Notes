@@ -228,18 +228,18 @@ public class FullKpRatingsProvider implements KpRatingsProvider {
         }
         log.info("Full: обогащение {} фильмов", toEnrich.size());
 
-        int enrichedCount = 0;
+        int enriched = 0;
+        int errored = 0;
         int skippedAlreadyFull = 0;
         for (MovieData movie : toEnrich) {
             if (progress != null) {
                 progress.waitWhilePaused();
                 if (progress.isAborted()) {
-                    log.info("Full: обогащение остановлено пользователем ({}/{})", enrichedCount, toEnrich.size());
+                    log.info("Full: обогащение остановлено пользователем ({}/{})", enriched, toEnrich.size());
                     break;
                 }
             }
 
-            // Был ли фильм «полным» до обогащения? (нужен для итогового счётчика skip.)
             boolean wasComplete = !needsEnrichment(movie);
 
             log.info("API: обогащаю '{}' (kpId={})", movie.getName(), movie.getKpId());
@@ -257,22 +257,21 @@ public class FullKpRatingsProvider implements KpRatingsProvider {
                 } else {
                     log.info("API: карточка получена: ориг. название={}", nameOrig != null ? nameOrig : "—");
                 }
-                enrichedCount++;
+                enriched++;
             } catch (KpQuotaExhaustedException e) {
                 log.warn("Full: исчерпана квота API — сохранён частичный дамп ({} обогащённых из {})",
-                         enrichedCount, toEnrich.size());
-                // Фиксируем все обогащённые (включая последний блок < BATCH_SIZE) перед пробросом.
+                         enriched, toEnrich.size());
                 if (onBatch != null) {
                     onBatch.accept(movies);
                 }
                 throw e;
             } catch (Exception e) {
                 log.warn("API: ошибка карточки '{}': {}", movie.getName(), e.getMessage());
-                // Считать как «пропущен» только если он не был полным ДО обогащения.
-                if (!wasComplete) {
+                if (wasComplete) {
                     skippedAlreadyFull++;
+                } else {
+                    errored++;
                 }
-                // Продолжаем со следующим фильмом — не бросаем.
             }
 
             // advance на каждый обогащённый.
@@ -281,19 +280,19 @@ public class FullKpRatingsProvider implements KpRatingsProvider {
             }
 
             // Промежуточный дамп каждые BATCH_SIZE.
-            if (onBatch != null && enrichedCount % BATCH_SIZE == 0) {
+            if (onBatch != null && enriched % BATCH_SIZE == 0) {
                 onBatch.accept(movies);
             }
         }
 
         // Финальный дамп в конце обогащения.
-        if (onBatch != null && enrichedCount > 0) {
+        if (onBatch != null && enriched > 0) {
             onBatch.accept(movies);
         }
 
-        int total = toEnrich.size();
-        int skipped = total - enrichedCount - skippedAlreadyFull;
-        log.info("Обогащено: {} из {}, пропущено (уже полные): {}", enrichedCount, total, skipped);
+        // Пересчитываем skippedFromError: фильмы с ошибкой, которые НЕ были полными до обогащения.
+        log.info("Обогащено: {}, ошибок: {}, пропущено (уже полные): {}",
+                 enriched, errored, skippedAlreadyFull);
 
         return movies;
     }
